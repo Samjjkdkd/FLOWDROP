@@ -49,3 +49,7 @@
   #game[data-touch-width=wide] .playfield{--width-ratio:2.1}
   #field{height:calc(100dvh - 16px)}
 }
+
+.gameplay-guide{max-width:64ch}
+.gameplay-guide summary{cursor:pointer;color:var(--mint);font-weight:700}
+.gameplay-guide p{line-height:1.6}
