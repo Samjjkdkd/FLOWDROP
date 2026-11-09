@@ -22,3 +22,6 @@
 #field{touch-action:none;user-select:none}
 .touch-hint{display:none}
 @media(any-pointer:coarse){.touch-hint{display:block;color:#b3b1bc;font-size:.85rem;margin:8px 0}}
+
+.playfield{position:relative}
+#pauseStatus{position:absolute;inset:0;display:grid;place-items:center;background:#101015bb;color:var(--mint);font:italic 700 clamp(2.5rem,10vw,6rem) Georgia,serif;pointer-events:none}

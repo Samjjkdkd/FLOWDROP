@@ -210,20 +210,68 @@ $('replay').onclick = $('replayGame').onclick = () => {
   startRun(lastRun);
 };
 
+function scheduleAudio(buffer, elapsed) {
+  const source = audio.createBufferSource();
+  source.buffer = buffer;
+  source.connect(audio.destination);
+  const now = audio.currentTime;
+  source.start(now + Math.max(0, -elapsed), Math.min(buffer.duration, Math.max(0, elapsed)));
+  return {source, start: now - elapsed};
+}
+
+function disconnectAudio(run) {
+  if (!run.source) return;
+  run.source.stop();
+  run.source.disconnect();
+  run.source = null;
+}
+
+$('pause').onclick = () => {
+  const run = active;
+  if (!run || run.finished || run.countdown) return;
+  if (run.pausedAt === undefined) {
+    run.pausedAt = audio.currentTime - run.start;
+    disconnectAudio(run);
+    cancelAnimationFrame(frame);
+    $('pauseStatus').textContent = 'Paused';
+    $('pauseStatus').hidden = false;
+    $('pause').textContent = 'Resume';
+    return;
+  }
+  const deadline = performance.now() + 3000;
+  $('pause').disabled = true;
+  const count = () => {
+    const remaining = deadline - performance.now();
+    if (remaining > 0) {
+      $('pauseStatus').textContent = Math.ceil(remaining / 1000);
+      run.countdown = setTimeout(count, Math.min(remaining, 50));
+      return;
+    }
+    run.countdown = null;
+    Object.assign(run, scheduleAudio(run.buffer, run.pausedAt));
+    delete run.pausedAt;
+    for (const note of run.notes) {
+      if (note.state === 'holding' && !held.has(note.lane)) release(note.lane);
+    }
+    $('pauseStatus').hidden = true;
+    $('pause').textContent = 'Pause';
+    $('pause').disabled = false;
+    frame = requestAnimationFrame(tick);
+  };
+  count();
+};
+
 function startRun(run) {
   lastRun = run;
   run = {...run, travel: Number($('speed').value),
     offset: Math.max(-250, Math.min(250, Number($('offset').value) || 0)) / 1000,
     vertical: $('view').value === 'vertical', sounds: $('sounds').value === 'on'};
-  const source = audio.createBufferSource();
-  source.buffer = run.buffer;
-  source.connect(audio.destination);
-  const start = audio.currentTime + run.travel;
-  source.start(start);
-  active = {...run, notes: run.notes.map(note => ({...note})), source, start,
-    duration: run.buffer.duration, effects: [], cursor: 0, score: 0, combo: 0, hits: 0};
+  const playback = scheduleAudio(run.buffer, -run.travel);
+  active = {...run, notes: run.notes.map(note => ({...note})), ...playback,
+    duration: run.buffer.duration, effects: [], cursor: 0, score: 0, combo: 0, hits: 0, fullCombo: true};
   $('setup').hidden = true;
   $('game').hidden = false;
+  $('pause').disabled = false;
   $('exit').focus();
   frame = requestAnimationFrame(tick);
 }
@@ -247,10 +295,13 @@ function stopRun() {
   if ($('results').open) $('results').close();
   cancelAnimationFrame(frame);
   if (active) {
-    active.source.stop();
-    active.source.disconnect();
+    clearTimeout(active.countdown);
+    disconnectAudio(active);
   }
   active = null;
+  $('pauseStatus').hidden = true;
+  $('pause').textContent = 'Pause';
+  $('pause').disabled = false;
   held.clear();
   inputs.clear();
   ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -279,6 +330,7 @@ function judge(note, label, points, t) {
     active.hits++;
   } else {
     active.combo = 0;
+    active.fullCombo = false;
   }
 }
 
@@ -287,6 +339,7 @@ function press(lane, input) {
   inputs.set(input, lane);
   if (held.has(lane)) return;
   held.add(lane);
+  if (active.pausedAt !== undefined) return;
   if (active.sounds) keySound(lane);
   const t = time();
   let nearest;
@@ -311,7 +364,7 @@ function press(lane, input) {
 
 function release(lane) {
   held.delete(lane);
-  if (!active || active.finished) return;
+  if (!active || active.finished || active.pausedAt !== undefined) return;
   const t = time();
   const note = active.notes.find(item => item.lane === lane && item.state === 'holding');
   if (!note) return;
@@ -427,7 +480,7 @@ function tick() {
   while (notes[active.cursor]?.state === 'done') active.cursor++;
   ctx.textAlign = 'center';
   if (active.combo) {
-    ctx.fillStyle = '#fff';
+    ctx.fillStyle = active.fullCombo ? '#ffe080' : '#fff';
     ctx.font = 'bold 45px monospace';
     ctx.fillText(active.combo, center, 110);
     ctx.font = 'bold 14px monospace';
@@ -466,6 +519,7 @@ function tick() {
 
   if (t >= active.duration + .55) {
     active.finished = true;
+    $('pause').disabled = true;
     held.clear();
     inputs.clear();
     $('finalScore').textContent = displayScore();
