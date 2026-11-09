@@ -32,19 +32,19 @@
   body:has(#game:not([hidden])) > header,
   body:has(#game:not([hidden])) > footer{display:none}
   body:has(#game:not([hidden])) > main{
-    width:100%;padding:8px max(8px,env(safe-area-inset-right)) 8px max(8px,env(safe-area-inset-left))
+    width:100%;padding:8px max(8px,env(safe-area-inset-right),env(safe-area-inset-left))
   }
 }
 @media (any-pointer:coarse) and (orientation:portrait){
   #field{height:min(64dvh,125vw)}
 }
 @media (any-pointer:coarse) and (orientation:landscape){
-  #game{display:grid;grid-template-columns:max-content minmax(0,1fr);align-items:start;gap:8px}
+  #game{position:relative;--control-space:106px}
   #game .hud,#game .hud span{display:flex;flex-direction:column;align-items:stretch;gap:4px}
-  #game .hud{padding:0}
+  #game .hud{position:absolute;top:0;left:0;z-index:1;width:calc(var(--control-space) - 8px);padding:0}
   #game .hud button{font-size:.8rem;padding:5px 8px;margin:0}
   #game .touch-hint{display:none}
-  #game .playfield{--width-ratio:1.7;width:min(100%,calc((100dvh - 16px) * var(--width-ratio)));margin-inline:auto}
+  #game .playfield{--width-ratio:1.7;width:min(calc(100% - 2 * var(--control-space)),calc((100dvh - 16px) * var(--width-ratio)));margin-inline:auto}
   #game[data-touch-width=compact] .playfield{--width-ratio:1.4}
   #game[data-touch-width=wide] .playfield{--width-ratio:2.1}
   #field{height:calc(100dvh - 16px)}
