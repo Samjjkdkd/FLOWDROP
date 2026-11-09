@@ -409,12 +409,15 @@ for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) {
   canvas.addEventListener(type, event => releaseInput(event.pointerId));
 }
 
+const touchScreen = matchMedia('(any-pointer: coarse)');
 const center = 420;
 const laneTop = 90;
 const line = 510;
 function x(lane, y) {
   y = Math.min(y, line);
-  return center + (lane - 3) * (active.vertical ? 113 : 32 + 81 * (y - laneTop) / (line - laneTop));
+  const laneWidth = touchScreen.matches ? 137 : 113;
+  const perspective = (y - laneTop) / (line - laneTop);
+  return center + (lane - 3) * (active.vertical ? laneWidth : 32 + (laneWidth - 32) * perspective);
 }
 
 function tick() {
@@ -431,15 +434,15 @@ function tick() {
   }
   ctx.fillStyle = '#d1ff69';
   ctx.fillRect(x(0, line), line, x(6, line) - x(0, line), 2);
-  if (matchMedia('(any-pointer: coarse)').matches) {
+  if (touchScreen.matches) {
     for (let lane = 0; lane < keys.length; lane++) {
       ctx.fillStyle = lane < 3 ? '#9b94ff35' : '#ff9dcf35';
-      ctx.fillRect(x(lane, line) + 3, line + 4, 107, canvas.height - line - 8);
+      ctx.fillRect(x(lane, line) + 3, line + 4, x(1, line) - x(0, line) - 6, canvas.height - line - 8);
     }
   }
   for (const lane of held) {
     ctx.fillStyle = '#d1ff69';
-    ctx.fillRect(x(lane, line) + 3, line - 3, 107, 6);
+    ctx.fillRect(x(lane, line) + 3, line - 3, x(1, line) - x(0, line) - 6, 6);
   }
   for (let i = active.cursor; i < notes.length; i++) {
     const note = notes[i];
