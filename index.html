@@ -10,7 +10,7 @@
 <label>Key sounds <select id="sounds"><option value="off">Off</option><option value="on">On</option></select></label><label>Timing offset (ms) <input id="offset" type="number" value="0" min="-250" max="250" step="5"></label></div>
 <button id="start" disabled>Generate &amp; play</button><button id="save" disabled>Save chart</button><button id="demo" disabled>Try practice beat</button>
 <p id="message" role="status">Game controls require JavaScript. If this message persists, open this file in a web browser.</p>
-</section><section id="game" hidden><div class="hud"><span><button id="saveGame">Save chart</button> <button id="exit">Exit</button></span></div><canvas id="field" width="840" height="600" aria-label="Six-lane rhythm playfield"></canvas><dialog id="results" aria-labelledby="resultTitle">
+</section><section id="game" hidden><div class="hud"><span><button id="exit">Exit</button> <button id="replayGame">Replay</button></span><button id="saveGame">Save chart</button></div><canvas id="field" width="840" height="600" aria-label="Six-lane rhythm playfield"></canvas><dialog id="results" aria-labelledby="resultTitle">
 <h2 id="resultTitle">Track complete</h2>
 <div class="result-grid"><div><small>SCORE</small><strong id="finalScore"></strong></div><div><small>ACCURACY</small><strong id="accuracy"></strong></div></div>
 <p id="result"></p><button id="replay">Replay</button> <button id="closeResults">Back to setup</button>
@@ -115,6 +115,7 @@ const canvas = $('field');
 const ctx = canvas.getContext('2d');
 const held = new Set();
 const windowSize = .155;
+const maxScore = 100000;
 let savedChart;
 let audio, active, loading = false;
 let lastRun;
@@ -163,7 +164,7 @@ $('results').addEventListener('cancel', event => {
   event.preventDefault();
   exit();
 });
-$('replay').onclick = () => {
+$('replay').onclick = $('replayGame').onclick = () => {
   const run = lastRun;
   exit();
   startRun(run);
@@ -250,6 +251,14 @@ function exit() {
 
 function time() {
   return audio.currentTime - active.start - active.offset;
+}
+
+function accuracy() {
+  return active.score / (active.notes.length * 100);
+}
+
+function displayScore() {
+  return Math.round(accuracy() * maxScore).toLocaleString('en-US');
 }
 
 function judge(note, label, points, t) {
@@ -413,13 +422,13 @@ function tick() {
   ctx.fillText('SCORE', canvas.width - 24, 26);
   ctx.fillStyle = '#f7f6ef';
   ctx.font = 'italic 700 38px Georgia, serif';
-  ctx.fillText(active.score.toLocaleString(), canvas.width - 24, 65);
+  ctx.fillText(displayScore(), canvas.width - 24, 65);
   
   if (t >= active.duration + .55) {
     active.finished = true;
     held.clear();
-    $('finalScore').textContent = active.score.toLocaleString();
-    $('accuracy').textContent = (active.score / (notes.length * 100) * 100).toFixed(1) + '%';
+    $('finalScore').textContent = displayScore();
+    $('accuracy').textContent = (accuracy() * 100).toFixed(1) + '%';
     $('result').textContent = active.hits + ' of ' + notes.length + ' notes hit';
     $('results').showModal();
     $('replay').focus();
