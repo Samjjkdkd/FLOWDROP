@@ -1,7 +1,7 @@
 const modes = {
   Easy: { gap: .29, threshold: 2.4, hold: .70 },
-  Normal: { gap: .17, threshold: 1.7, hold: .55 },
-  Hard: { gap: .105, threshold: 1.15, hold: .48 }
+  Normal: { gap: .17, threshold: 1.7, hold: .55, chord: 3.6 },
+  Hard: { gap: .105, threshold: 1.15, hold: .48, chord: 2.9 }
 };
 
 function chart(buffer, difficulty) {
@@ -28,18 +28,21 @@ function chart(buffer, difficulty) {
     previous = bands;
   }
 
+  const intensity = sectionIntensity(frames, hop / rate);
   const notes = [];
   const lanes = [1, 4, 0, 5, 2, 3];
   const freeAt = Array(6).fill(0);
-  let last = -Infinity, lastHold = -Infinity, lastChord = -Infinity;
+  let last = -Infinity, lastHold = -Infinity, holdEnd = -Infinity;
   let recent = 0;
   for (let i = 0; i < frames.length - 1; i++) {
     const f = frames[i];
     const before = frames[i - 1]?.attack ?? 0;
-    const threshold = Math.max(.07, recent * mode.threshold);
+    const drive = intensity[i];
+    const density = 1.35 - drive * .7;
+    const threshold = Math.max(.07, recent * mode.threshold * density);
     recent = recent * .94 + f.attack * .06;
     if (f.attack < threshold || f.attack < before || f.attack <= frames[i + 1].attack ||
-        f.time - last < mode.gap || f.time > buffer.duration - .12) continue;
+        f.time - last < mode.gap * density || f.time > buffer.duration - .12) continue;
     const lane = Array.from({ length: 6 }, (_, j) => lanes[(notes.length + j) % 6])
       .find(candidate => freeAt[candidate] <= f.time);
     if (lane === undefined) continue;
@@ -48,23 +51,53 @@ function chart(buffer, difficulty) {
     if (f.time - lastHold > 3) {
       duration = sustainLength(frames, i, hop / rate, mode.hold);
       if (f.time + duration >= buffer.duration) duration = 0;
-      if (duration) lastHold = f.time;
+      if (duration) {
+        lastHold = f.time;
+        holdEnd = f.time + duration;
+      }
     }
     notes.push({ time: f.time, lane, duration });
     freeAt[lane] = f.time + duration + .16;
     last = f.time;
-    const allowChord = (difficulty === 'Hard' && notes.length % 7 === 0) ||
-      (difficulty === 'Normal' && !duration && f.time - lastChord >= 1.4);
-    if (allowChord && f.attack > threshold * 2) {
+    // A held key plus one tap already uses both available fingers.
+    if (mode.chord && f.time >= holdEnd + .08 &&
+        f.attack > Math.max(.22, recent * mode.chord * (1.35 - drive * .65))) {
       const opposite = (lane + 3) % 6;
       if (freeAt[opposite] <= f.time) {
         notes.push({ time: f.time, lane: opposite, duration: 0 });
         freeAt[opposite] = f.time + .16;
-        lastChord = f.time;
       }
     }
   }
   return notes;
+}
+
+function sectionIntensity(frames, step) {
+  if (!frames.length) return [];
+  const radius = Math.round(2 / step);
+  const energy = [0];
+  const attacks = [0];
+  for (const frame of frames) {
+    energy.push(energy.at(-1) + Math.log1p(frame.low + frame.body));
+    attacks.push(attacks.at(-1) + Math.min(3, frame.attack));
+  }
+  const sections = frames.map((_, i) => {
+    const start = Math.max(0, i - radius);
+    const end = Math.min(frames.length, i + radius + 1);
+    return [(energy[end] - energy[start]) / (end - start),
+      (attacks[end] - attacks[start]) / (end - start)];
+  });
+  const scales = [0, 1].map(band => {
+    const values = sections.map(section => section[band]).sort((a, b) => a - b);
+    const low = values[Math.floor((values.length - 1) * .2)];
+    const high = values[Math.floor((values.length - 1) * .85)];
+    return {low, range: high - low};
+  });
+  return sections.map(section => {
+    const [loudness, activity] = scales.map(({low, range}, band) =>
+      range < .015 ? .5 : Math.max(0, Math.min(1, (section[band] - low) / range)));
+    return loudness * .45 + activity * .55;
+  });
 }
 
 function sustainLength(frames, start, step, minimum) {
