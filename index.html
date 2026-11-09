@@ -10,7 +10,7 @@
 <label>Timing offset (ms) <input id="offset" type="number" value="0" min="-250" max="250" step="5"></label></div>
 <button id="start" disabled>Generate &amp; play</button><button id="save" disabled>Save chart</button><button id="demo" disabled>Try practice beat</button>
 <p id="message" role="status">Game controls require JavaScript. If this message persists, open this file in a web browser.</p>
-</section><section id="game" hidden><div class="hud"><strong id="score">0</strong><span id="combo"></span><span><button id="saveGame">Save chart</button> <button id="exit">Exit</button></span></div><canvas id="field" width="840" height="600" aria-label="Six-lane rhythm playfield"></canvas><p id="result" role="status"></p></section></main>
+</section><section id="game" hidden><div class="hud"><span><button id="saveGame">Save chart</button> <button id="exit">Exit</button></span></div><canvas id="field" width="840" height="600" aria-label="Six-lane rhythm playfield"></canvas><p id="result" role="status"></p></section></main>
 <footer><span>S / D / F</span><span>J / K / L</span></footer>
 <script>const modes = {
   Easy: { gap: .29, threshold: 2.4, hold: .70 },
@@ -221,7 +221,8 @@ function time() {
 }
 
 function judge(note, label, points, t) {
-  note.state = 'done';
+  note.state = points ? 'done' : 'missed';
+  if (!points) note.missedAt = t;
   active.effects.push({lane: note.lane, label, t,
     color: {Perfect: '#d1ff69', Good: '#75e4ff', Bad: '#ffbc66', Miss: '#ff728a'}[label]});
   active.score += points;
@@ -276,9 +277,10 @@ window.addEventListener('keyup', event => release(keys.indexOf(event.code)));
 window.addEventListener('blur', () => [...held].forEach(release));
 
 const center = 420;
-const laneTop = 45;
+const laneTop = 90;
 const line = 510;
 function x(lane, y) {
+  y = Math.min(y, line);
   return center + (lane - 3) * (active.vertical ? 113 : 32 + 81 * (y - laneTop) / (line - laneTop));
 }
 
@@ -291,31 +293,38 @@ function tick() {
     ctx.beginPath();
     ctx.moveTo(x(i, laneTop), laneTop);
     ctx.lineTo(x(i, line), line);
+    ctx.lineTo(x(i, line), canvas.height);
     ctx.stroke();
   }
   ctx.fillStyle = '#d1ff69';
   ctx.fillRect(x(0, line), line, x(6, line) - x(0, line), 2);
-  for (let lane = 0; lane < 6; lane++) {
-    ctx.fillStyle = held.has(lane) ? '#d1ff69' : '#35354a';
-    ctx.fillRect(x(lane, line) + 3, line + 7, 107, 42);
-    ctx.fillStyle = held.has(lane) ? '#121218' : '#fff';
-    ctx.font = 'bold 23px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText(keys[lane].at(-1), x(lane + .5, line), line + 35);
+  for (const lane of held) {
+    ctx.fillStyle = '#d1ff69';
+    ctx.fillRect(x(lane, line) + 3, line - 3, 107, 6);
   }
   for (let i = active.cursor; i < notes.length; i++) {
     const note = notes[i];
     if (note.time > t + travel) break;
     if (note.state === 'done') continue;
+    const fadeDuration = .42;
+    if (note.state === 'missed' && t - note.missedAt >= fadeDuration) {
+      note.state = 'done';
+      continue;
+    }
     if (note.state === 'holding' && t >= note.time + note.duration) {
       judge(note, note.label, note.points, t);
       continue;
     }
     if (!note.state && t - note.time > windowSize) {
       judge(note, 'Miss', 0, t);
-      continue;
     }
-    const yAt = when => Math.max(laneTop, Math.min(line, line - (when - t) / travel * (line - laneTop)));
+    const missed = note.state === 'missed';
+    const yAt = when => {
+      const y = line - (when - t) / travel * (line - laneTop);
+      return Math.max(laneTop, missed || !note.state ? y : Math.min(line, y));
+    };
+    ctx.save();
+    if (missed) ctx.globalAlpha = Math.max(0, 1 - (t - note.missedAt) / fadeDuration);
     const y = yAt(note.time);
     const tail = yAt(note.time + note.duration);
     ctx.fillStyle = note.duration ? '#d1ff69' : note.lane < 3 ? '#9b94ff' : '#ff9dcf';
@@ -328,6 +337,7 @@ function tick() {
       ctx.fill();
     }
     ctx.fillRect(x(note.lane + .08, y), y - 5, x(note.lane + .92, y) - x(note.lane + .08, y), 10);
+    ctx.restore();
   }
   while (notes[active.cursor]?.state === 'done') active.cursor++;
   ctx.textAlign = 'center';
@@ -361,9 +371,15 @@ function tick() {
     ctx.stroke();
     ctx.restore();
   }
-  $('score').textContent = active.score.toLocaleString();
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#b3b1bc';
+  ctx.font = '700 12px monospace';
+  ctx.fillText('SCORE', canvas.width - 24, 26);
+  ctx.fillStyle = '#f7f6ef';
+  ctx.font = 'italic 700 38px Georgia, serif';
+  ctx.fillText(active.score.toLocaleString(), canvas.width - 24, 65);
   
-  if (t >= active.duration + .25) {
+  if (t >= active.duration + .55) {
     active.finished = true;
     held.clear();
     $('result').textContent = 'Track complete / ' + active.hits + ' of ' + notes.length + ' hits / ' +
