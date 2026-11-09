@@ -1,7 +1,7 @@
 const modes = {
   Easy: { gap: .29, threshold: 2.4, hold: .70 },
-  Normal: { gap: .22, threshold: 2.05, hold: .55, chord: 3.6, peak: 4, pressure: 19, reliefPeak: 2 },
-  Hard: { gap: .105, threshold: 1.15, hold: .48, chord: 2.9, peak: 6, pressure: 34, reliefPeak: 3 }
+  Normal: { gap: .22, threshold: 2.05, hold: .55, chord: 3.6, peak: 4.5, pressure: 19, reliefPeak: 2 },
+  Hard: { gap: .105, threshold: 1.15, hold: .48, chord: 2.9, peak: 6.5, pressure: 34, reliefPeak: 3 }
 };
 
 function chart(buffer, difficulty) {
@@ -49,11 +49,11 @@ function chart(buffer, difficulty) {
     recent = recent * .94 + f.attack * .06;
     if (f.attack < threshold || f.attack < before || f.attack <= frames[i + 1].attack ||
         f.time - last < mode.gap * density || f.time > buffer.duration - .12) continue;
-    // Count timed actions in the last second. A chord is one action.
-    if (mode.peak) {
-      while (recentStarts.length && f.time - recentStarts[0] >= 1) recentStarts.shift();
-      if (recentStarts.length >= (resting ? mode.reliefPeak : mode.peak)) continue;
-    }
+    // Charge 1 for a single start and 1.5 for a two-key chord.
+    const peak = resting ? mode.reliefPeak : mode.peak;
+    while (recentStarts.length && f.time - recentStarts[0].time >= 1) recentStarts.shift();
+    const load = recentStarts.reduce((sum, start) => sum + start.weight, 0);
+    if (peak && load + 1 > peak) continue;
     const lane = Array.from({ length: 6 }, (_, j) => lanes[(notes.length + j) % 6])
       .find(candidate => freeAt[candidate] <= f.time);
     if (lane === undefined) continue;
@@ -70,16 +70,18 @@ function chart(buffer, difficulty) {
     notes.push({ time: f.time, lane, duration });
     freeAt[lane] = f.time + duration + .16;
     last = f.time;
-    if (mode.peak) recentStarts.push(f.time);
+    let weight = 1;
     // A held key plus one tap already uses both available fingers.
-    if (!resting && mode.chord && f.time >= holdEnd + .08 &&
+    if (!resting && mode.chord && load + 1.5 <= peak && f.time >= holdEnd + .08 &&
         f.attack > Math.max(.22, recent * mode.chord * (1.35 - drive * .65))) {
       const opposite = (lane + 3) % 6;
       if (freeAt[opposite] <= f.time) {
         notes.push({ time: f.time, lane: opposite, duration: 0 });
         freeAt[opposite] = f.time + .16;
+        weight = 1.5;
       }
     }
+    if (peak) recentStarts.push({time: f.time, weight});
     if (mode.pressure && !resting) {
       pressureStarts.push(f.time);
       while (f.time - pressureStarts[0] > pressureWindow) pressureStarts.shift();
