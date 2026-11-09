@@ -190,6 +190,9 @@ $('playTrack').onclick = playSelection;
 $('saveTrack').onclick = () => saveChart(selected, selected?.charts[$('difficulty').value], $('difficulty').value);
 $('saveGame').onclick = () => saveChart(lastRun.track, lastRun.notes, lastRun.difficulty);
 $('openSettings').onclick = () => $('settingsDialog').showModal();
+$('touchWidth').onchange = event => {
+  $('game').dataset.touchWidth = event.target.value;
+};
 $('exit').onclick = () => {
   stopRun();
   lastRun = null;

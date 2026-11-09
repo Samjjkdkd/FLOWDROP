@@ -25,3 +25,27 @@
 
 .playfield{position:relative}
 #pauseStatus{position:absolute;inset:0;display:grid;place-items:center;background:#101015bb;color:var(--mint);font:italic 700 clamp(2.5rem,10vw,6rem) Georgia,serif;pointer-events:none}
+
+.touch-setting{display:none}
+@media (any-pointer:coarse){
+  .touch-setting{display:grid}
+  body:has(#game:not([hidden])) > header,
+  body:has(#game:not([hidden])) > footer{display:none}
+  body:has(#game:not([hidden])) > main{
+    width:100%;padding:8px max(8px,env(safe-area-inset-right)) 8px max(8px,env(safe-area-inset-left))
+  }
+}
+@media (any-pointer:coarse) and (orientation:portrait){
+  #field{height:min(64dvh,125vw)}
+}
+@media (any-pointer:coarse) and (orientation:landscape){
+  #game{display:grid;grid-template-columns:max-content minmax(0,1fr);align-items:start;gap:8px}
+  #game .hud,#game .hud span{display:flex;flex-direction:column;align-items:stretch;gap:4px}
+  #game .hud{padding:0}
+  #game .hud button{font-size:.8rem;padding:5px 8px;margin:0}
+  #game .touch-hint{display:none}
+  #game .playfield{--width-ratio:1.7;width:min(100%,calc((100dvh - 16px) * var(--width-ratio)));margin-inline:auto}
+  #game[data-touch-width=compact] .playfield{--width-ratio:1.4}
+  #game[data-touch-width=wide] .playfield{--width-ratio:2.1}
+  #field{height:calc(100dvh - 16px)}
+}

@@ -15,7 +15,7 @@
 </aside>
 </section><section id="game" hidden><div class="hud"><span><button id="exit">Back to tracks</button> <button id="replayGame" disabled>Replay</button> <button id="pause">Pause</button> <button id="openSettings">Settings</button></span><button id="saveGame">Save chart</button></div><div class="playfield"><canvas id="field" width="840" height="600" aria-label="Six-lane rhythm playfield"></canvas><div id="pauseStatus" role="status" hidden></div></div><p class="touch-hint">Tap the pads below the line. Hold for long notes.</p>
 <dialog id="settingsDialog" aria-labelledby="settingsTitle"><h2 id="settingsTitle">Settings</h2>
-<div class="settings"><label>Lane view <select id="view"><option value="perspective">Perspective</option><option value="vertical">Vertical</option></select></label>
+<div class="settings"><label class="touch-setting">Landscape width <select id="touchWidth"><option value="compact">Compact</option><option value="auto" selected>Auto</option><option value="wide">Wide</option></select></label><label>Lane view <select id="view"><option value="perspective">Perspective</option><option value="vertical">Vertical</option></select></label>
 <label>Scroll speed <select id="speed"><option value="2.5">Slow</option><option value="1.8" selected>Normal</option><option value="1.2">Fast</option></select></label>
 <label>Key sounds <select id="sounds"><option value="off">Off</option><option value="on">On</option></select></label><label>Timing offset (ms) <input id="offset" type="number" value="0" min="-250" max="250" step="5"></label></div>
 <p>Settings apply to the next play or replay.</p><form method="dialog"><button>Done</button></form></dialog><dialog id="results" aria-labelledby="resultTitle">
