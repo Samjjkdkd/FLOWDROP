@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FLOWDROP</title><link rel="stylesheet" href="style.css">
+<header><a href="./">FLOW<span>DROP</span></a><small>RHYTHM LAB / 01</small></header>
+<main><section id="setup"><p class="label">LOCAL AUDIO / AUTO CHART</p><h1>Catch the<br><em>flow.</em></h1>
+<p>Pick a track. Generate a chart. Play it on six keys.</p>
+<label class="picker">Choose audio <input id="audio" type="file" accept="audio/*,.mp3,.wav,.m4a,.ogg"></label>
+<label class="picker">Optional chart (.json) <input id="chartFile" type="file" accept=".json,application/json"></label><div class="settings"><label>Lane view <select id="view"><option value="perspective">Perspective</option><option value="vertical">Vertical</option></select></label><label>Difficulty <select id="difficulty"><option>Easy</option><option selected>Normal</option><option>Hard</option></select></label>
+<label>Scroll speed <select id="speed"><option value="2.5">Slow</option><option value="1.8" selected>Normal</option><option value="1.2">Fast</option></select></label>
+<label>Timing offset (ms) <input id="offset" type="number" value="0" min="-250" max="250" step="5"></label></div>
+<button id="start" disabled>Generate &amp; play</button><button id="save" disabled>Save chart</button><button id="demo" disabled>Try practice beat</button>
+<p id="message" role="status">Game controls require JavaScript. If this message persists, open this file in a web browser.</p>
+</section><section id="game" hidden><div class="hud"><strong id="score">0</strong><span id="combo"></span><span><button id="saveGame">Save chart</button> <button id="exit">Exit</button></span></div><canvas id="field" width="840" height="600" aria-label="Six-lane rhythm playfield"></canvas><p id="result" role="status"></p></section></main>
+<footer><span>S / D / F</span><span>J / K / L</span></footer>
+<script>const modes = {
+  Easy: { gap: .29, threshold: 2.4, hold: .70 },
+  Normal: { gap: .17, threshold: 1.7, hold: .55 },
+  Hard: { gap: .105, threshold: 1.15, hold: .48 }
+};
+
+function chart(buffer, difficulty) {
+  const mode = modes[difficulty];
+  const input = buffer.getChannelData(0);
+  const rate = buffer.sampleRate;
+  const stride = Math.max(1, Math.floor(rate / 12000));
+  const hop = Math.round(rate * .02);
+  const frames = [];
+  let bass = 0, lowMid = 0, previous = [0, 0, 0];
+  for (let start = 0; start + hop <= input.length; start += hop) {
+    const energy = [0, 0, 0];
+    for (let i = start; i < start + hop; i += stride) {
+      bass += .07 * (input[i] - bass);
+      lowMid += .36 * (input[i] - lowMid);
+      energy[0] += bass * bass;
+      energy[1] += (lowMid - bass) ** 2;
+      energy[2] += (input[i] - lowMid) ** 2;
+    }
+    const bands = energy.map(value => Math.log1p(value * 25));
+    const attack = bands.reduce((sum, value, band) =>
+      sum + Math.max(0, value - previous[band]) * [1.45, 1.15, .75][band], 0);
+    frames.push({ time: start / rate, attack, bass: bands[0], energy: bands.reduce((a, b) => a + b) });
+    previous = bands;
+  }
+
+  const notes = [];
+  const lanes = [1, 4, 0, 5, 2, 3];
+  const freeAt = Array(6).fill(0);
+  let last = -Infinity, lastHold = -Infinity;
+  let recent = 0;
+  for (let i = 0; i < frames.length - 1; i++) {
+    const f = frames[i];
+    const before = frames[i - 1]?.attack ?? 0;
+    const threshold = Math.max(.07, recent * mode.threshold);
+    recent = recent * .94 + f.attack * .06;
+    if (f.attack < threshold || f.attack < before || f.attack <= frames[i + 1].attack ||
+        f.time - last < mode.gap || f.time > buffer.duration - .12) continue;
+    const lane = Array.from({ length: 6 }, (_, j) => lanes[(notes.length + j) % 6])
+      .find(candidate => freeAt[candidate] <= f.time);
+    if (lane === undefined) continue;
+
+    let duration = 0;
+    if (f.time - lastHold > 3 && f.bass > .6) {
+      let tail = i + 1;
+      while (tail < frames.length && tail - i < 48 &&
+             frames[tail].bass > f.bass * .6 && frames[tail].energy > f.energy * .6) tail++;
+      const length = (tail - i) * hop / rate;
+      if (length >= mode.hold && f.time + length < buffer.duration) {
+        duration = length;
+        lastHold = f.time;
+      }
+    }
+    notes.push({ time: f.time, lane, duration });
+    freeAt[lane] = f.time + duration + .16;
+    last = f.time;
+    if (difficulty === 'Hard' && notes.length % 7 === 0 && f.attack > threshold * 2) {
+      const opposite = (lane + 3) % 6;
+      if (freeAt[opposite] <= f.time) {
+        notes.push({ time: f.time, lane: opposite, duration: 0 });
+        freeAt[opposite] = f.time + .16;
+      }
+    }
+  }
+  return notes;
+}
+
+function practice(context) {
+  const rate = context.sampleRate;
+  const buffer = context.createBuffer(1, rate * 17, rate);
+  const samples = buffer.getChannelData(0);
+  let seed = 17;
+  for (let beat = 0; beat < 32; beat++) {
+    for (const [offset, kind] of [[0, beat % 2 ? 'snare' : 'kick'], [.25, 'hat']]) {
+      const start = Math.round((.5 + beat * .5 + offset) * rate);
+      for (let i = 0; i < rate * .14; i++) {
+        const t = i / rate;
+        seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+        const noise = seed / 2147483648 - 1;
+        samples[start + i] += kind === 'kick'
+          ? .8 * Math.sin(2 * Math.PI * (45 * t + 2 * (1 - Math.exp(-35 * t)))) * Math.exp(-29 * t)
+          : noise * (kind === 'snare' ? .5 * Math.exp(-38 * t) : .16 * Math.exp(-115 * t));
+      }
+    }
+  }
+  return buffer;
+}</script>
+<script>
+
+const $ = id => document.getElementById(id);
+const keys = ['KeyS', 'KeyD', 'KeyF', 'KeyJ', 'KeyK', 'KeyL'];
+const canvas = $('field');
+const ctx = canvas.getContext('2d');
+const held = new Set();
+const windowSize = .155;
+let savedChart;
+let audio, active, loading = false;
+let frame;
+
+$('audio').addEventListener('change', () => {
+  $('start').disabled = !$('audio').files.length || loading;
+});
+$('chartFile').addEventListener('change', () => {
+  $('start').textContent = $('chartFile').files.length ? 'Play imported chart' : 'Generate & play';
+  $('difficulty').disabled = !!$('chartFile').files.length;
+});
+function readChart(data, buffer) {
+  if (data?.version !== 1 || data.lanes !== 6 || !Array.isArray(data.notes) ||
+      !data.notes.length || data.notes.length > 12000) {
+    throw new Error('Choose a valid six-lane FLOWDROP chart.');
+  }
+  const ends = Array(6).fill(-1);
+  let previous = -1;
+  return data.notes.map(({time, lane, duration}) => {
+    if (!Number.isFinite(time) || time < 0 || time < previous ||
+        !Number.isInteger(lane) || lane < 0 || lane >= 6 ||
+        !Number.isFinite(duration) || duration < 0 || time <= ends[lane] ||
+        time + duration > buffer.duration + .02) {
+      throw new Error('Invalid chart or mismatched audio. Choose the original track version.');
+    }
+    ends[lane] = time + duration;
+    previous = time;
+    return {time, lane, duration};
+  });
+}
+function saveChart() {
+  if (!savedChart) return;
+  const url = URL.createObjectURL(new Blob([JSON.stringify(savedChart, null, 2)], {type: 'application/json'}));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'flowdrop-chart.json';
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+$('save').onclick = $('saveGame').onclick = saveChart;
+$('start').onclick = () => launch(false);
+$('demo').onclick = () => launch(true);
+$('exit').onclick = exit;
+
+async function launch(demo) {
+  if (loading || active) return;
+  const file = $('audio').files[0];
+  if (!demo && !file) return;
+  loading = true;
+  $('start').disabled = $('demo').disabled = true;
+  $('message').textContent = 'Analyzing audio...';
+  let source;
+  try {
+    audio ??= new AudioContext();
+    await audio.resume();
+    if (!demo && file.size > 40 * 1024 * 1024) throw new Error('Choose an audio file under 40 MB.');
+    const buffer = demo ? practice(audio) : await audio.decodeAudioData(await file.arrayBuffer());
+    if (buffer.duration > 600) throw new Error('Choose a track under 10 minutes.');
+    const chartFile = demo ? null : $('chartFile').files[0];
+    if (chartFile?.size > 2 * 1024 * 1024) throw new Error('Choose a chart under 2 MB.');
+    const notes = chartFile
+      ? readChart(JSON.parse(await chartFile.text()), buffer)
+      : chart(buffer, $('difficulty').value);
+    if (!notes.length) throw new Error('No clear hits found. Try another track or difficulty.');
+    const travel = Number($('speed').value);
+    const offset = Math.max(-250, Math.min(250, Number($('offset').value) || 0)) / 1000;
+    source = audio.createBufferSource();
+    source.buffer = buffer;
+    source.connect(audio.destination);
+    const start = audio.currentTime + travel;
+    source.start(start);
+    savedChart = {version: 1, lanes: 6, notes: notes.map(({time, lane, duration}) => ({time, lane, duration}))};
+    $('save').disabled = false;
+    active = { notes, source, start, travel, offset, duration: buffer.duration,
+      vertical: $('view').value === 'vertical', effects: [],
+      cursor: 0, score: 0, combo: 0, hits: 0 };
+    $('setup').hidden = true;
+    $('game').hidden = false;
+    $('result').textContent = '';
+    $('exit').focus();
+    frame = requestAnimationFrame(tick);
+  } catch (error) {
+    source?.disconnect();
+    $('message').textContent = error.message || 'Could not open this audio file.';
+  } finally {
+    loading = false;
+    $('start').disabled = !$('audio').files.length;
+    $('demo').disabled = false;
+  }
+}
+
+function exit() {
+  cancelAnimationFrame(frame);
+  if (active) {
+    active.source.stop();
+    active.source.disconnect();
+  }
+  active = null;
+  held.clear();
+  $('game').hidden = true;
+  $('setup').hidden = false;
+  $('message').textContent = 'Your file stays on this device.';
+  $('audio').focus();
+}
+
+function time() {
+  return audio.currentTime - active.start - active.offset;
+}
+
+function judge(note, label, points, t) {
+  note.state = 'done';
+  active.effects.push({lane: note.lane, label, t,
+    color: {Perfect: '#d1ff69', Good: '#75e4ff', Bad: '#ffbc66', Miss: '#ff728a'}[label]});
+  active.score += points;
+  if (points) {
+    active.combo++;
+    active.hits++;
+  } else {
+    active.combo = 0;
+  }
+}
+
+window.addEventListener('keydown', event => {
+  const lane = keys.indexOf(event.code);
+  if (!active || active.finished || lane < 0 || event.altKey || event.ctrlKey || event.metaKey) return;
+  event.preventDefault();
+  if (event.repeat || held.has(lane)) return;
+  held.add(lane);
+  const t = time();
+  let nearest;
+  for (let i = active.cursor; i < active.notes.length; i++) {
+    const note = active.notes[i];
+    if (note.time > t + windowSize) break;
+    if (note.lane !== lane || note.state || Math.abs(t - note.time) > windowSize) continue;
+    if (!nearest || Math.abs(t - note.time) < Math.abs(t - nearest.time)) nearest = note;
+  }
+  if (!nearest) return;
+  const delta = Math.abs(t - nearest.time);
+  const label = delta <= .065 ? 'Perfect' : delta <= .115 ? 'Good' : 'Bad';
+  const points = {Perfect: 100, Good: 65, Bad: 30}[label];
+  if (nearest.duration) {
+    nearest.state = 'holding';
+    nearest.label = label;
+    nearest.points = points;
+  } else {
+    judge(nearest, label, points, t);
+  }
+});
+
+function release(lane) {
+  held.delete(lane);
+  if (!active || active.finished) return;
+  const t = time();
+  const note = active.notes.find(item => item.lane === lane && item.state === 'holding');
+  if (!note) return;
+  if (t >= note.time + note.duration - .135) {
+    judge(note, note.label, note.points, t);
+  } else {
+    judge(note, 'Miss', 0, t);
+  }
+}
+window.addEventListener('keyup', event => release(keys.indexOf(event.code)));
+window.addEventListener('blur', () => [...held].forEach(release));
+
+const center = 420;
+const laneTop = 45;
+const line = 510;
+function x(lane, y) {
+  return center + (lane - 3) * (active.vertical ? 113 : 32 + 81 * (y - laneTop) / (line - laneTop));
+}
+
+function tick() {
+  const t = time();
+  const { notes, travel } = active;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  for (let i = 0; i <= 6; i++) {
+    ctx.strokeStyle = '#55556b';
+    ctx.beginPath();
+    ctx.moveTo(x(i, laneTop), laneTop);
+    ctx.lineTo(x(i, line), line);
+    ctx.stroke();
+  }
+  ctx.fillStyle = '#d1ff69';
+  ctx.fillRect(x(0, line), line, x(6, line) - x(0, line), 2);
+  for (let lane = 0; lane < 6; lane++) {
+    ctx.fillStyle = held.has(lane) ? '#d1ff69' : '#35354a';
+    ctx.fillRect(x(lane, line) + 3, line + 7, 107, 42);
+    ctx.fillStyle = held.has(lane) ? '#121218' : '#fff';
+    ctx.font = 'bold 23px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(keys[lane].at(-1), x(lane + .5, line), line + 35);
+  }
+  for (let i = active.cursor; i < notes.length; i++) {
+    const note = notes[i];
+    if (note.time > t + travel) break;
+    if (note.state === 'done') continue;
+    if (note.state === 'holding' && t >= note.time + note.duration) {
+      judge(note, note.label, note.points, t);
+      continue;
+    }
+    if (!note.state && t - note.time > windowSize) {
+      judge(note, 'Miss', 0, t);
+      continue;
+    }
+    const yAt = when => Math.max(laneTop, Math.min(line, line - (when - t) / travel * (line - laneTop)));
+    const y = yAt(note.time);
+    const tail = yAt(note.time + note.duration);
+    ctx.fillStyle = note.duration ? '#d1ff69' : note.lane < 3 ? '#9b94ff' : '#ff9dcf';
+    if (note.duration) {
+      ctx.beginPath();
+      ctx.moveTo(x(note.lane + .24, tail), tail);
+      ctx.lineTo(x(note.lane + .76, tail), tail);
+      ctx.lineTo(x(note.lane + .76, y), y);
+      ctx.lineTo(x(note.lane + .24, y), y);
+      ctx.fill();
+    }
+    ctx.fillRect(x(note.lane + .08, y), y - 5, x(note.lane + .92, y) - x(note.lane + .08, y), 10);
+  }
+  while (notes[active.cursor]?.state === 'done') active.cursor++;
+  ctx.textAlign = 'center';
+  if (active.combo) {
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 45px monospace';
+    ctx.fillText(active.combo, center, 110);
+    ctx.font = 'bold 14px monospace';
+    ctx.fillText('COMBO', center, 132);
+  }
+  active.effects = active.effects.filter(effect => t - effect.t < .48);
+  for (const effect of active.effects) {
+    const progress = Math.max(0, (t - effect.t) / .48);
+    const cx = x(effect.lane + .5, line);
+    ctx.save();
+    ctx.globalAlpha = 1 - progress;
+    ctx.fillStyle = ctx.strokeStyle = effect.color;
+    ctx.lineWidth = 3;
+    ctx.font = 'bold 17px monospace';
+    ctx.fillText(effect.label, cx, line - 21 - progress * 40);
+    ctx.beginPath();
+    const radius = 11 + progress * 24;
+    if (effect.label === 'Miss') {
+      ctx.moveTo(cx - radius, line - radius);
+      ctx.lineTo(cx + radius, line + radius);
+      ctx.moveTo(cx + radius, line - radius);
+      ctx.lineTo(cx - radius, line + radius);
+    } else {
+      ctx.ellipse(cx, line, radius * 1.7, radius * .55, 0, 0, Math.PI * 2);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+  $('score').textContent = active.score.toLocaleString();
+  
+  if (t >= active.duration + .25) {
+    active.finished = true;
+    held.clear();
+    $('result').textContent = 'Track complete / ' + active.hits + ' of ' + notes.length + ' hits / ' +
+      Math.round(active.score / (notes.length * 100) * 100) + '% accuracy';
+    return;
+  }
+  frame = requestAnimationFrame(tick);
+}
+$('demo').disabled = false;
+$('start').disabled = !$('audio').files.length;
+$('message').textContent = 'Your file stays on this device. Positive timing offset moves judgment later.';
+</script></html>
