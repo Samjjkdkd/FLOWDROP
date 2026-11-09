@@ -5,18 +5,16 @@ const ctx = canvas.getContext('2d');
 const held = new Set();
 const windowSize = .155;
 const maxScore = 100000;
-let savedChart;
+const trackLimit = 8;
+const difficulties = ['Easy', 'Normal', 'Hard'];
+const tracks = [];
+let selected;
 let audio, active, loading = false;
 let lastRun;
 let frame;
 
-$('audio').addEventListener('change', () => {
-  $('start').disabled = !$('audio').files.length || loading;
-});
-$('chartFile').addEventListener('change', () => {
-  $('start').textContent = $('chartFile').files.length ? 'Play imported chart' : 'Generate & play';
-  $('difficulty').disabled = !!$('chartFile').files.length;
-});
+$('audio').addEventListener('change', updateControls);
+
 function readChart(data, buffer) {
   if (data?.version !== 1 || data.lanes !== 6 || !Array.isArray(data.notes) ||
       !data.notes.length || data.notes.length > 12000) {
@@ -37,69 +35,203 @@ function readChart(data, buffer) {
   });
 }
 function saveChart() {
-  if (!savedChart) return;
-  const url = URL.createObjectURL(new Blob([JSON.stringify(savedChart, null, 2)], {type: 'application/json'}));
+  const notes = selected?.charts[$('difficulty').value];
+  if (!notes?.length) return;
+  const data = {version: 1, lanes: 6, notes};
+  const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'}));
   const link = document.createElement('a');
   link.href = url;
-  link.download = 'flowdrop-chart.json';
+  link.download = selected.name + '-' + $('difficulty').value.toLowerCase() + '.json';
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
-$('save').onclick = $('saveGame').onclick = saveChart;
-$('start').onclick = () => launch(false);
-$('demo').onclick = () => launch(true);
-$('exit').onclick = $('closeResults').onclick = exit;
-$('results').addEventListener('cancel', event => {
-  event.preventDefault();
-  exit();
-});
-$('replay').onclick = $('replayGame').onclick = () => {
-  const run = lastRun;
-  exit();
-  startRun(run);
-};
 
-async function launch(demo) {
-  if (loading || active) return;
-  const file = $('audio').files[0];
-  if (!demo && !file) return;
+function updateControls() {
+  const full = tracks.length >= trackLimit;
+  $('openLibrary').hidden = !tracks.length;
+  $('openLibrary').disabled = loading;
+  $('start').disabled = loading || full || !$('audio').files.length;
+  $('demo').disabled = loading || full;
+  $('moreAudio').disabled = loading || full;
+  $('exit').disabled = loading;
+  $('playTrack').disabled = loading || !selected?.charts[$('difficulty').value]?.length;
+  $('saveGame').disabled = $('playTrack').disabled;
+  $('replayGame').disabled = loading || !lastRun;
+  $('trackCount').textContent = tracks.length + ' / ' + trackLimit;
+}
+
+function showLibrary() {
+  $('setup').hidden = true;
+  $('game').hidden = false;
+  renderTracks();
+}
+
+function renderTracks() {
+  $('tracks').replaceChildren(...tracks.map(track => {
+    const row = document.createElement('li');
+    const pick = document.createElement('button');
+    pick.textContent = track.name;
+    pick.setAttribute('aria-pressed', String(selected === track));
+    pick.onclick = () => {
+      selected = track;
+      renderTracks();
+    };
+    const remove = document.createElement('button');
+    remove.textContent = 'Remove';
+    remove.setAttribute('aria-label', 'Remove ' + track.name);
+    remove.onclick = () => {
+      if (loading) return;
+      if (lastRun?.track === track) {
+        stopRun();
+        lastRun = null;
+      }
+      tracks.splice(tracks.indexOf(track), 1);
+      if (selected === track) selected = tracks[0];
+      renderTracks();
+    };
+    row.append(pick, remove);
+    return row;
+  }));
+  const difficulty = $('difficulty');
+  for (const option of difficulty.options) {
+    option.disabled = !selected?.charts[option.value]?.length;
+  }
+  if (difficulty.selectedOptions[0]?.disabled) {
+    difficulty.value = [...difficulty.options].find(option => !option.disabled)?.value ?? 'Normal';
+  }
+  difficulty.disabled = !selected;
+  updateControls();
+}
+
+async function openAudio() {
+  audio ??= new AudioContext();
+  await audio.resume();
+}
+
+async function decode(file) {
+  if (!file) return practice(audio);
+  if (file.size > 40 * 1024 * 1024) throw new Error('Audio must be under 40 MB.');
+  const buffer = await audio.decodeAudioData(await file.arrayBuffer());
+  if (buffer.duration > 600) throw new Error('Audio must be under 10 minutes.');
+  return buffer;
+}
+
+async function importTracks(files, chartFile, demo = false) {
+  if (loading || (!files.length && !demo)) return;
+  const status = $('setup').hidden ? $('libraryMessage') : $('message');
+  if (chartFile && files.length !== 1) {
+    status.textContent = 'Select exactly one audio file when importing a chart.';
+    return;
+  }
+  const slots = trackLimit - tracks.length;
+  const queue = demo ? [null].slice(0, slots) : files.slice(0, slots);
   loading = true;
-  $('start').disabled = $('demo').disabled = true;
-  $('message').textContent = 'Analyzing audio...';
+  updateControls();
+  const errors = [];
+  let added = 0;
   try {
-    audio ??= new AudioContext();
-    await audio.resume();
-    if (!demo && file.size > 40 * 1024 * 1024) throw new Error('Choose an audio file under 40 MB.');
-    const buffer = demo ? practice(audio) : await audio.decodeAudioData(await file.arrayBuffer());
-    if (buffer.duration > 600) throw new Error('Choose a track under 10 minutes.');
-    const chartFile = demo ? null : $('chartFile').files[0];
+    await openAudio();
     if (chartFile?.size > 2 * 1024 * 1024) throw new Error('Choose a chart under 2 MB.');
-    const notes = chartFile
-      ? readChart(JSON.parse(await chartFile.text()), buffer)
-      : chart(buffer, $('difficulty').value);
-    if (!notes.length) throw new Error('No clear hits found. Try another track or difficulty.');
-    const travel = Number($('speed').value);
-    const offset = Math.max(-250, Math.min(250, Number($('offset').value) || 0)) / 1000;
-    lastRun = {buffer, notes, travel, offset, vertical: $('view').value === 'vertical',
-      sounds: $('sounds').value === 'on'};
-    startRun(lastRun);
+    const imported = chartFile ? JSON.parse(await chartFile.text()) : null;
+    for (const file of queue) {
+      const name = file?.name ?? 'Practice beat';
+      status.textContent = 'Generating charts / ' + name;
+      await new Promise(resolve => setTimeout(resolve, 0));
+      try {
+        const buffer = await decode(file);
+        const charts = Object.fromEntries(difficulties.map(level => [level, chart(buffer, level)]));
+        if (chartFile) charts.Custom = readChart(imported, buffer);
+        if (!Object.values(charts).some(notes => notes.length)) throw new Error('No clear hits found.');
+        const track = {file, name, charts};
+        tracks.push(track);
+        if (!added) {
+          selected = track;
+          $('difficulty').value = chartFile ? 'Custom' : 'Normal';
+        }
+        added++;
+      } catch (error) {
+        errors.push(name + ': ' + error.message);
+      }
+    }
   } catch (error) {
-    $('message').textContent = error.message || 'Could not open this audio file.';
+    errors.push(error.message);
   } finally {
     loading = false;
-    $('start').disabled = !$('audio').files.length;
-    $('demo').disabled = false;
+    const skipped = files.length - queue.length;
+    const summary = [added ? added + ' track(s) added.' : '',
+      skipped > 0 ? skipped + ' skipped. Library limit: ' + trackLimit + '.' : '', ...errors].filter(Boolean).join(' ');
+    status.textContent = summary;
+    if (added) {
+      $('audio').value = '';
+      $('chartFile').value = '';
+      $('libraryMessage').textContent = summary;
+      showLibrary();
+    }
+    updateControls();
   }
 }
 
+async function playSelection() {
+  const track = selected;
+  const notes = track?.charts[$('difficulty').value];
+  if (loading || !notes?.length) return;
+  stopRun();
+  loading = true;
+  updateControls();
+  try {
+    await openAudio();
+    const buffer = lastRun?.track === track ? lastRun.buffer : await decode(track.file);
+    startRun({track, buffer, notes});
+  } catch (error) {
+    $('libraryMessage').textContent = error.message;
+  } finally {
+    loading = false;
+    updateControls();
+  }
+}
+
+$('openLibrary').onclick = showLibrary;
+$('start').onclick = () => importTracks([...$('audio').files], $('chartFile').files[0]);
+$('moreAudio').onchange = () => {
+  const files = [...$('moreAudio').files];
+  $('moreAudio').value = '';
+  importTracks(files);
+};
+$('demo').onclick = () => importTracks([], null, true);
+$('difficulty').onchange = updateControls;
+$('playTrack').onclick = playSelection;
+$('saveGame').onclick = saveChart;
+$('openSettings').onclick = () => $('settingsDialog').showModal();
+$('exit').onclick = () => {
+  stopRun();
+  lastRun = null;
+  $('game').hidden = true;
+  $('setup').hidden = false;
+  $('message').textContent = tracks.length + ' track(s) in this session.';
+  $('audio').focus();
+  updateControls();
+};
+$('closeResults').onclick = stopRun;
+$('results').addEventListener('cancel', event => {
+  event.preventDefault();
+  stopRun();
+});
+$('replay').onclick = $('replayGame').onclick = () => {
+  if (loading || !lastRun) return;
+  stopRun();
+  startRun(lastRun);
+};
+
 function startRun(run) {
+  lastRun = run;
+  run = {...run, travel: Number($('speed').value),
+    offset: Math.max(-250, Math.min(250, Number($('offset').value) || 0)) / 1000,
+    vertical: $('view').value === 'vertical', sounds: $('sounds').value === 'on'};
   const source = audio.createBufferSource();
   source.buffer = run.buffer;
   source.connect(audio.destination);
   const start = audio.currentTime + run.travel;
   source.start(start);
-  savedChart = {version: 1, lanes: 6, notes: run.notes};
-  $('save').disabled = false;
   active = {...run, notes: run.notes.map(note => ({...note})), source, start,
     duration: run.buffer.duration, effects: [], cursor: 0, score: 0, combo: 0, hits: 0};
   $('setup').hidden = true;
@@ -123,7 +255,7 @@ function keySound(lane) {
   tone.stop(now + .06);
 }
 
-function exit() {
+function stopRun() {
   if ($('results').open) $('results').close();
   cancelAnimationFrame(frame);
   if (active) {
@@ -132,10 +264,7 @@ function exit() {
   }
   active = null;
   held.clear();
-  $('game').hidden = true;
-  $('setup').hidden = false;
-  $('message').textContent = 'Your file stays on this device.';
-  $('audio').focus();
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
 }
 
 function time() {
@@ -166,7 +295,7 @@ function judge(note, label, points, t) {
 
 window.addEventListener('keydown', event => {
   const lane = keys.indexOf(event.code);
-  if (!active || active.finished || lane < 0 || event.altKey || event.ctrlKey || event.metaKey) return;
+  if ($('settingsDialog').open || !active || active.finished || lane < 0 || event.altKey || event.ctrlKey || event.metaKey) return;
   event.preventDefault();
   if (event.repeat || held.has(lane)) return;
   held.add(lane);
@@ -327,4 +456,4 @@ function tick() {
 }
 $('demo').disabled = false;
 $('start').disabled = !$('audio').files.length;
-$('message').textContent = 'Your file stays on this device. Positive timing offset moves judgment later.';
+$('message').textContent = 'Audio stays on this device. Tracks are kept until this page is closed or refreshed.';
