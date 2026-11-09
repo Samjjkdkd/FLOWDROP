@@ -1,7 +1,7 @@
 const modes = {
   Easy: { gap: .29, threshold: 2.4, hold: .70 },
-  Normal: { gap: .22, threshold: 2.05, hold: .55, chord: 3.6, peak: 3, pressure: 19, reliefPeak: 2 },
-  Hard: { gap: .105, threshold: 1.15, hold: .48, chord: 2.9, peak: 7, pressure: 34, reliefPeak: 3 }
+  Normal: { gap: .22, threshold: 2.05, hold: .55, chord: 3.6, peak: 4, pressure: 19, reliefPeak: 2 },
+  Hard: { gap: .105, threshold: 1.15, hold: .48, chord: 2.9, peak: 6, pressure: 34, reliefPeak: 3 }
 };
 
 function chart(buffer, difficulty) {
