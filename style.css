@@ -7,16 +7,14 @@
 .result-grid strong{display:block;color:var(--mint);font:italic 700 clamp(1.7rem,7vw,2.6rem) Georgia,serif;overflow-wrap:anywhere}
 #replay{background:var(--mint);color:#141415;font-weight:700}
 
-body:has(#game:not([hidden])) main{width:min(1190px,calc(100% - 32px))}
-.studio{display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,285px);gap:18px}
-.library{padding:14px;border:1px solid var(--line);align-self:start}
+.library{margin-top:24px;padding:14px;border:1px solid var(--line);align-self:start}
 .library-head,.track-controls,#tracks li{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .library h2{margin:0;font:italic 700 1.6rem Georgia,serif}
 .library .picker{margin:12px 0}
-#tracks{list-style:none;padding:0;margin:0 0 12px;display:grid;gap:6px}
+#tracks{max-height:360px;overflow:auto;list-style:none;padding:0;margin:0 0 12px;display:grid;gap:6px}
 #tracks li button:first-child{flex:1;min-width:0;overflow-wrap:anywhere;text-align:left}
 #tracks button[aria-pressed=true]{border-color:var(--mint);color:var(--mint)}
 #tracks li button:last-child,#libraryMessage{font-size:.8rem}
 #settingsDialog{max-width:calc(100% - 32px);padding:24px;color:var(--ink);background:#161621;border:1px solid var(--line)}
 #settingsDialog::backdrop{background:#08080ccc}
-@media(max-width:760px){.studio{grid-template-columns:1fr}.hud{flex-wrap:wrap}}
+@media(max-width:760px){.track-controls{flex-wrap:wrap}.hud{flex-wrap:wrap}}

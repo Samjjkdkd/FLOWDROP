@@ -5,7 +5,7 @@ const ctx = canvas.getContext('2d');
 const held = new Set();
 const windowSize = .155;
 const maxScore = 100000;
-const trackLimit = 8;
+const trackLimit = 30;
 const difficulties = ['Easy', 'Normal', 'Hard'];
 const tracks = [];
 let selected;
@@ -34,36 +34,27 @@ function readChart(data, buffer) {
     return {time, lane, duration};
   });
 }
-function saveChart() {
-  const notes = selected?.charts[$('difficulty').value];
+function saveChart(track, notes, difficulty) {
   if (!notes?.length) return;
   const data = {version: 1, lanes: 6, notes};
   const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'}));
   const link = document.createElement('a');
   link.href = url;
-  link.download = selected.name + '-' + $('difficulty').value.toLowerCase() + '.json';
+  link.download = track.name + '-' + difficulty.toLowerCase() + '.json';
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function updateControls() {
   const full = tracks.length >= trackLimit;
-  $('openLibrary').hidden = !tracks.length;
-  $('openLibrary').disabled = loading;
+  document.querySelector('.library').hidden = !tracks.length;
   $('start').disabled = loading || full || !$('audio').files.length;
   $('demo').disabled = loading || full;
-  $('moreAudio').disabled = loading || full;
   $('exit').disabled = loading;
   $('playTrack').disabled = loading || !selected?.charts[$('difficulty').value]?.length;
-  $('saveGame').disabled = $('playTrack').disabled;
+  $('saveGame').disabled = $('saveTrack').disabled = $('playTrack').disabled;
   $('replayGame').disabled = loading || !lastRun;
   $('trackCount').textContent = tracks.length + ' / ' + trackLimit;
-}
-
-function showLibrary() {
-  $('setup').hidden = true;
-  $('game').hidden = false;
-  renderTracks();
 }
 
 function renderTracks() {
@@ -118,7 +109,7 @@ async function decode(file) {
 
 async function importTracks(files, chartFile, demo = false) {
   if (loading || (!files.length && !demo)) return;
-  const status = $('setup').hidden ? $('libraryMessage') : $('message');
+  const status = $('message');
   if (chartFile && files.length !== 1) {
     status.textContent = 'Select exactly one audio file when importing a chart.';
     return;
@@ -165,7 +156,7 @@ async function importTracks(files, chartFile, demo = false) {
       $('audio').value = '';
       $('chartFile').value = '';
       $('libraryMessage').textContent = summary;
-      showLibrary();
+      renderTracks();
     }
     updateControls();
   }
@@ -173,7 +164,8 @@ async function importTracks(files, chartFile, demo = false) {
 
 async function playSelection() {
   const track = selected;
-  const notes = track?.charts[$('difficulty').value];
+  const difficulty = $('difficulty').value;
+  const notes = track?.charts[difficulty];
   if (loading || !notes?.length) return;
   stopRun();
   loading = true;
@@ -181,7 +173,7 @@ async function playSelection() {
   try {
     await openAudio();
     const buffer = lastRun?.track === track ? lastRun.buffer : await decode(track.file);
-    startRun({track, buffer, notes});
+    startRun({track, buffer, notes, difficulty});
   } catch (error) {
     $('libraryMessage').textContent = error.message;
   } finally {
@@ -190,17 +182,12 @@ async function playSelection() {
   }
 }
 
-$('openLibrary').onclick = showLibrary;
 $('start').onclick = () => importTracks([...$('audio').files], $('chartFile').files[0]);
-$('moreAudio').onchange = () => {
-  const files = [...$('moreAudio').files];
-  $('moreAudio').value = '';
-  importTracks(files);
-};
 $('demo').onclick = () => importTracks([], null, true);
 $('difficulty').onchange = updateControls;
 $('playTrack').onclick = playSelection;
-$('saveGame').onclick = saveChart;
+$('saveTrack').onclick = () => saveChart(selected, selected?.charts[$('difficulty').value], $('difficulty').value);
+$('saveGame').onclick = () => saveChart(lastRun.track, lastRun.notes, lastRun.difficulty);
 $('openSettings').onclick = () => $('settingsDialog').showModal();
 $('exit').onclick = () => {
   stopRun();
@@ -211,10 +198,10 @@ $('exit').onclick = () => {
   $('audio').focus();
   updateControls();
 };
-$('closeResults').onclick = stopRun;
+$('closeResults').onclick = $('exit').onclick;
 $('results').addEventListener('cancel', event => {
   event.preventDefault();
-  stopRun();
+  $('exit').click();
 });
 $('replay').onclick = $('replayGame').onclick = () => {
   if (loading || !lastRun) return;
