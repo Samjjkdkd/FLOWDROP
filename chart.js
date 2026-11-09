@@ -31,7 +31,7 @@ function chart(buffer, difficulty) {
   const notes = [];
   const lanes = [1, 4, 0, 5, 2, 3];
   const freeAt = Array(6).fill(0);
-  let last = -Infinity, lastHold = -Infinity;
+  let last = -Infinity, lastHold = -Infinity, lastChord = -Infinity;
   let recent = 0;
   for (let i = 0; i < frames.length - 1; i++) {
     const f = frames[i];
@@ -58,11 +58,14 @@ function chart(buffer, difficulty) {
     notes.push({ time: f.time, lane, duration });
     freeAt[lane] = f.time + duration + .16;
     last = f.time;
-    if (difficulty === 'Hard' && notes.length % 7 === 0 && f.attack > threshold * 2) {
+    const allowChord = (difficulty === 'Hard' && notes.length % 7 === 0) ||
+      (difficulty === 'Normal' && !duration && f.time - lastChord >= 1.4);
+    if (allowChord && f.attack > threshold * 2) {
       const opposite = (lane + 3) % 6;
       if (freeAt[opposite] <= f.time) {
         notes.push({ time: f.time, lane: opposite, duration: 0 });
         freeAt[opposite] = f.time + .16;
+        lastChord = f.time;
       }
     }
   }
