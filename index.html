@@ -7,10 +7,14 @@
 <label class="picker">Choose audio <input id="audio" type="file" accept="audio/*,.mp3,.wav,.m4a,.ogg"></label>
 <label class="picker">Optional chart (.json) <input id="chartFile" type="file" accept=".json,application/json"></label><div class="settings"><label>Lane view <select id="view"><option value="perspective">Perspective</option><option value="vertical">Vertical</option></select></label><label>Difficulty <select id="difficulty"><option>Easy</option><option selected>Normal</option><option>Hard</option></select></label>
 <label>Scroll speed <select id="speed"><option value="2.5">Slow</option><option value="1.8" selected>Normal</option><option value="1.2">Fast</option></select></label>
-<label>Timing offset (ms) <input id="offset" type="number" value="0" min="-250" max="250" step="5"></label></div>
+<label>Key sounds <select id="sounds"><option value="off">Off</option><option value="on">On</option></select></label><label>Timing offset (ms) <input id="offset" type="number" value="0" min="-250" max="250" step="5"></label></div>
 <button id="start" disabled>Generate &amp; play</button><button id="save" disabled>Save chart</button><button id="demo" disabled>Try practice beat</button>
 <p id="message" role="status">Game controls require JavaScript. If this message persists, open this file in a web browser.</p>
-</section><section id="game" hidden><div class="hud"><span><button id="saveGame">Save chart</button> <button id="exit">Exit</button></span></div><canvas id="field" width="840" height="600" aria-label="Six-lane rhythm playfield"></canvas><p id="result" role="status"></p></section></main>
+</section><section id="game" hidden><div class="hud"><span><button id="saveGame">Save chart</button> <button id="exit">Exit</button></span></div><canvas id="field" width="840" height="600" aria-label="Six-lane rhythm playfield"></canvas><dialog id="results" aria-labelledby="resultTitle">
+<h2 id="resultTitle">Track complete</h2>
+<div class="result-grid"><div><small>SCORE</small><strong id="finalScore"></strong></div><div><small>ACCURACY</small><strong id="accuracy"></strong></div></div>
+<p id="result"></p><button id="replay">Replay</button> <button id="closeResults">Back to setup</button>
+</dialog></section></main>
 <footer><span>S / D / F</span><span>J / K / L</span></footer>
 <script>const modes = {
   Easy: { gap: .29, threshold: 2.4, hold: .70 },
@@ -113,6 +117,7 @@ const held = new Set();
 const windowSize = .155;
 let savedChart;
 let audio, active, loading = false;
+let lastRun;
 let frame;
 
 $('audio').addEventListener('change', () => {
@@ -153,7 +158,16 @@ function saveChart() {
 $('save').onclick = $('saveGame').onclick = saveChart;
 $('start').onclick = () => launch(false);
 $('demo').onclick = () => launch(true);
-$('exit').onclick = exit;
+$('exit').onclick = $('closeResults').onclick = exit;
+$('results').addEventListener('cancel', event => {
+  event.preventDefault();
+  exit();
+});
+$('replay').onclick = () => {
+  const run = lastRun;
+  exit();
+  startRun(run);
+};
 
 async function launch(demo) {
   if (loading || active) return;
@@ -162,7 +176,6 @@ async function launch(demo) {
   loading = true;
   $('start').disabled = $('demo').disabled = true;
   $('message').textContent = 'Analyzing audio...';
-  let source;
   try {
     audio ??= new AudioContext();
     await audio.resume();
@@ -177,23 +190,10 @@ async function launch(demo) {
     if (!notes.length) throw new Error('No clear hits found. Try another track or difficulty.');
     const travel = Number($('speed').value);
     const offset = Math.max(-250, Math.min(250, Number($('offset').value) || 0)) / 1000;
-    source = audio.createBufferSource();
-    source.buffer = buffer;
-    source.connect(audio.destination);
-    const start = audio.currentTime + travel;
-    source.start(start);
-    savedChart = {version: 1, lanes: 6, notes: notes.map(({time, lane, duration}) => ({time, lane, duration}))};
-    $('save').disabled = false;
-    active = { notes, source, start, travel, offset, duration: buffer.duration,
-      vertical: $('view').value === 'vertical', effects: [],
-      cursor: 0, score: 0, combo: 0, hits: 0 };
-    $('setup').hidden = true;
-    $('game').hidden = false;
-    $('result').textContent = '';
-    $('exit').focus();
-    frame = requestAnimationFrame(tick);
+    lastRun = {buffer, notes, travel, offset, vertical: $('view').value === 'vertical',
+      sounds: $('sounds').value === 'on'};
+    startRun(lastRun);
   } catch (error) {
-    source?.disconnect();
     $('message').textContent = error.message || 'Could not open this audio file.';
   } finally {
     loading = false;
@@ -202,7 +202,39 @@ async function launch(demo) {
   }
 }
 
+function startRun(run) {
+  const source = audio.createBufferSource();
+  source.buffer = run.buffer;
+  source.connect(audio.destination);
+  const start = audio.currentTime + run.travel;
+  source.start(start);
+  savedChart = {version: 1, lanes: 6, notes: run.notes};
+  $('save').disabled = false;
+  active = {...run, notes: run.notes.map(note => ({...note})), source, start,
+    duration: run.buffer.duration, effects: [], cursor: 0, score: 0, combo: 0, hits: 0};
+  $('setup').hidden = true;
+  $('game').hidden = false;
+  $('exit').focus();
+  frame = requestAnimationFrame(tick);
+}
+
+function keySound(lane) {
+  const now = audio.currentTime;
+  const tone = audio.createOscillator();
+  const gain = audio.createGain();
+  tone.type = 'triangle';
+  tone.frequency.setValueAtTime(370 + lane * 55, now);
+  tone.frequency.exponentialRampToValueAtTime(150 + lane * 20, now + .045);
+  gain.gain.setValueAtTime(.07, now);
+  gain.gain.exponentialRampToValueAtTime(.001, now + .055);
+  tone.connect(gain).connect(audio.destination);
+  tone.onended = () => { tone.disconnect(); gain.disconnect(); };
+  tone.start(now);
+  tone.stop(now + .06);
+}
+
 function exit() {
+  if ($('results').open) $('results').close();
   cancelAnimationFrame(frame);
   if (active) {
     active.source.stop();
@@ -240,6 +272,7 @@ window.addEventListener('keydown', event => {
   event.preventDefault();
   if (event.repeat || held.has(lane)) return;
   held.add(lane);
+  if (active.sounds) keySound(lane);
   const t = time();
   let nearest;
   for (let i = active.cursor; i < active.notes.length; i++) {
@@ -270,6 +303,7 @@ function release(lane) {
   if (t >= note.time + note.duration - .135) {
     judge(note, note.label, note.points, t);
   } else {
+    note.brokenHold = true;
     judge(note, 'Miss', 0, t);
   }
 }
@@ -306,7 +340,7 @@ function tick() {
     const note = notes[i];
     if (note.time > t + travel) break;
     if (note.state === 'done') continue;
-    const fadeDuration = .42;
+    const fadeDuration = note.duration ? .30 : .17;
     if (note.state === 'missed' && t - note.missedAt >= fadeDuration) {
       note.state = 'done';
       continue;
@@ -325,10 +359,10 @@ function tick() {
     };
     ctx.save();
     if (missed) ctx.globalAlpha = Math.max(0, 1 - (t - note.missedAt) / fadeDuration);
-    const y = yAt(note.time);
+    const y = note.brokenHold ? line : yAt(note.time);
     const tail = yAt(note.time + note.duration);
     ctx.fillStyle = note.duration ? '#d1ff69' : note.lane < 3 ? '#9b94ff' : '#ff9dcf';
-    if (note.duration) {
+    if (note.duration && (!note.brokenHold || tail < line)) {
       ctx.beginPath();
       ctx.moveTo(x(note.lane + .24, tail), tail);
       ctx.lineTo(x(note.lane + .76, tail), tail);
@@ -336,7 +370,9 @@ function tick() {
       ctx.lineTo(x(note.lane + .24, y), y);
       ctx.fill();
     }
-    ctx.fillRect(x(note.lane + .08, y), y - 5, x(note.lane + .92, y) - x(note.lane + .08, y), 10);
+    if (!note.brokenHold) {
+      ctx.fillRect(x(note.lane + .08, y), y - 5, x(note.lane + .92, y) - x(note.lane + .08, y), 10);
+    }
     ctx.restore();
   }
   while (notes[active.cursor]?.state === 'done') active.cursor++;
@@ -382,8 +418,11 @@ function tick() {
   if (t >= active.duration + .55) {
     active.finished = true;
     held.clear();
-    $('result').textContent = 'Track complete / ' + active.hits + ' of ' + notes.length + ' hits / ' +
-      Math.round(active.score / (notes.length * 100) * 100) + '% accuracy';
+    $('finalScore').textContent = active.score.toLocaleString();
+    $('accuracy').textContent = (active.score / (notes.length * 100) * 100).toFixed(1) + '%';
+    $('result').textContent = active.hits + ' of ' + notes.length + ' notes hit';
+    $('results').showModal();
+    $('replay').focus();
     return;
   }
   frame = requestAnimationFrame(tick);
