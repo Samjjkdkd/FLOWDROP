@@ -11,7 +11,7 @@
 .library-head,.track-controls,#tracks li{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .library h2{margin:0;font:italic 700 1.6rem Georgia,serif}
 .library .picker{margin:12px 0}
-#tracks{max-height:360px;overflow:auto;list-style:none;padding:0;margin:0 0 12px;display:grid;gap:6px}
+#tracks{max-height:360px;overflow:auto;scrollbar-gutter:stable;list-style:none;padding:0 16px 0 0;margin:0 0 12px;display:grid;gap:6px}
 #tracks li button:first-child{flex:1;min-width:0;overflow-wrap:anywhere;text-align:left}
 #tracks button[aria-pressed=true]{border-color:var(--mint);color:var(--mint)}
 #tracks li button:last-child,#libraryMessage{font-size:.8rem}
