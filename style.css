@@ -18,3 +18,7 @@
 #settingsDialog{max-width:calc(100% - 32px);padding:24px;color:var(--ink);background:#161621;border:1px solid var(--line)}
 #settingsDialog::backdrop{background:#08080ccc}
 @media(max-width:760px){.track-controls{flex-wrap:wrap}.hud{flex-wrap:wrap}}
+
+#field{touch-action:none;user-select:none}
+.touch-hint{display:none}
+@media(any-pointer:coarse){.touch-hint{display:block;color:#b3b1bc;font-size:.85rem;margin:8px 0}}

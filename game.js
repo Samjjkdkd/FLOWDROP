@@ -3,6 +3,7 @@ const keys = ['KeyS', 'KeyD', 'KeyF', 'KeyJ', 'KeyK', 'KeyL'];
 const canvas = $('field');
 const ctx = canvas.getContext('2d');
 const held = new Set();
+const inputs = new Map();
 const windowSize = .155;
 const maxScore = 100000;
 const trackLimit = 30;
@@ -251,6 +252,7 @@ function stopRun() {
   }
   active = null;
   held.clear();
+  inputs.clear();
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 }
 
@@ -280,11 +282,10 @@ function judge(note, label, points, t) {
   }
 }
 
-window.addEventListener('keydown', event => {
-  const lane = keys.indexOf(event.code);
-  if ($('settingsDialog').open || !active || active.finished || lane < 0 || event.altKey || event.ctrlKey || event.metaKey) return;
-  event.preventDefault();
-  if (event.repeat || held.has(lane)) return;
+function press(lane, input) {
+  if ($('settingsDialog').open || !active || active.finished || lane < 0 || inputs.has(input)) return;
+  inputs.set(input, lane);
+  if (held.has(lane)) return;
   held.add(lane);
   if (active.sounds) keySound(lane);
   const t = time();
@@ -306,7 +307,7 @@ window.addEventListener('keydown', event => {
   } else {
     judge(nearest, label, points, t);
   }
-});
+}
 
 function release(lane) {
   held.delete(lane);
@@ -321,8 +322,36 @@ function release(lane) {
     judge(note, 'Miss', 0, t);
   }
 }
-window.addEventListener('keyup', event => release(keys.indexOf(event.code)));
-window.addEventListener('blur', () => [...held].forEach(release));
+function releaseInput(input) {
+  const lane = inputs.get(input);
+  if (lane === undefined) return;
+  inputs.delete(input);
+  if (![...inputs.values()].includes(lane)) release(lane);
+}
+
+window.addEventListener('keydown', event => {
+  const lane = keys.indexOf(event.code);
+  if ($('settingsDialog').open || !active || active.finished || lane < 0 ||
+      event.altKey || event.ctrlKey || event.metaKey) return;
+  event.preventDefault();
+  if (!event.repeat) press(lane, event.code);
+});
+window.addEventListener('keyup', event => releaseInput(event.code));
+window.addEventListener('blur', () => [...inputs.keys()].forEach(releaseInput));
+
+canvas.addEventListener('pointerdown', event => {
+  if (!active || active.finished || event.button !== 0) return;
+  const bounds = canvas.getBoundingClientRect();
+  const touchX = (event.clientX - bounds.left) * canvas.width / bounds.width;
+  const touchY = (event.clientY - bounds.top) * canvas.height / bounds.height;
+  if (touchY < line - 65 || touchX < x(0, line) || touchX >= x(keys.length, line)) return;
+  const lane = Math.floor((touchX - x(0, line)) / (x(1, line) - x(0, line)));
+  canvas.setPointerCapture(event.pointerId);
+  press(lane, event.pointerId);
+});
+for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) {
+  canvas.addEventListener(type, event => releaseInput(event.pointerId));
+}
 
 const center = 420;
 const laneTop = 90;
@@ -346,6 +375,12 @@ function tick() {
   }
   ctx.fillStyle = '#d1ff69';
   ctx.fillRect(x(0, line), line, x(6, line) - x(0, line), 2);
+  if (matchMedia('(any-pointer: coarse)').matches) {
+    for (let lane = 0; lane < keys.length; lane++) {
+      ctx.fillStyle = lane < 3 ? '#9b94ff35' : '#ff9dcf35';
+      ctx.fillRect(x(lane, line) + 3, line + 4, 107, canvas.height - line - 8);
+    }
+  }
   for (const lane of held) {
     ctx.fillStyle = '#d1ff69';
     ctx.fillRect(x(lane, line) + 3, line - 3, 107, 6);
@@ -432,6 +467,7 @@ function tick() {
   if (t >= active.duration + .55) {
     active.finished = true;
     held.clear();
+    inputs.clear();
     $('finalScore').textContent = displayScore();
     $('accuracy').textContent = (accuracy() * 100).toFixed(1) + '%';
     $('result').textContent = active.hits + ' of ' + notes.length + ' notes hit';
