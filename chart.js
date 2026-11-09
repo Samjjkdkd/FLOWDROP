@@ -1,7 +1,7 @@
 const modes = {
   Easy: { gap: .29, threshold: 2.4, hold: .70 },
-  Normal: { gap: .17, threshold: 1.7, hold: .55, chord: 3.6 },
-  Hard: { gap: .105, threshold: 1.15, hold: .48, chord: 2.9 }
+  Normal: { gap: .22, threshold: 2.05, hold: .55, chord: 3.6, peak: 3 },
+  Hard: { gap: .105, threshold: 1.15, hold: .48, chord: 2.9, peak: 7 }
 };
 
 function chart(buffer, difficulty) {
@@ -30,6 +30,7 @@ function chart(buffer, difficulty) {
 
   const intensity = sectionIntensity(frames, hop / rate);
   const notes = [];
+  const recentStarts = [];
   const lanes = [1, 4, 0, 5, 2, 3];
   const freeAt = Array(6).fill(0);
   let last = -Infinity, lastHold = -Infinity, holdEnd = -Infinity;
@@ -43,6 +44,11 @@ function chart(buffer, difficulty) {
     recent = recent * .94 + f.attack * .06;
     if (f.attack < threshold || f.attack < before || f.attack <= frames[i + 1].attack ||
         f.time - last < mode.gap * density || f.time > buffer.duration - .12) continue;
+    // Count timed actions in the last second. A chord is one action.
+    if (mode.peak) {
+      while (recentStarts.length && f.time - recentStarts[0] >= 1) recentStarts.shift();
+      if (recentStarts.length >= mode.peak) continue;
+    }
     const lane = Array.from({ length: 6 }, (_, j) => lanes[(notes.length + j) % 6])
       .find(candidate => freeAt[candidate] <= f.time);
     if (lane === undefined) continue;
@@ -59,6 +65,7 @@ function chart(buffer, difficulty) {
     notes.push({ time: f.time, lane, duration });
     freeAt[lane] = f.time + duration + .16;
     last = f.time;
+    if (mode.peak) recentStarts.push(f.time);
     // A held key plus one tap already uses both available fingers.
     if (mode.chord && f.time >= holdEnd + .08 &&
         f.attack > Math.max(.22, recent * mode.chord * (1.35 - drive * .65))) {
