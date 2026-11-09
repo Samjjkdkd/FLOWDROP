@@ -24,7 +24,7 @@ function chart(buffer, difficulty) {
     const bands = energy.map(value => Math.log1p(value * 25));
     const attack = bands.reduce((sum, value, band) =>
       sum + Math.max(0, value - previous[band]) * [1.45, 1.15, .75][band], 0);
-    frames.push({ time: start / rate, attack, bass: bands[0], energy: bands.reduce((a, b) => a + b) });
+    frames.push({ time: start / rate, attack, low: energy[0], body: energy[1] + energy[2], mid: energy[1] });
     previous = bands;
   }
 
@@ -45,15 +45,10 @@ function chart(buffer, difficulty) {
     if (lane === undefined) continue;
 
     let duration = 0;
-    if (f.time - lastHold > 3 && f.bass > .6) {
-      let tail = i + 1;
-      while (tail < frames.length && tail - i < 48 &&
-             frames[tail].bass > f.bass * .6 && frames[tail].energy > f.energy * .6) tail++;
-      const length = (tail - i) * hop / rate;
-      if (length >= mode.hold && f.time + length < buffer.duration) {
-        duration = length;
-        lastHold = f.time;
-      }
+    if (f.time - lastHold > 3) {
+      duration = sustainLength(frames, i, hop / rate, mode.hold);
+      if (f.time + duration >= buffer.duration) duration = 0;
+      if (duration) lastHold = f.time;
     }
     notes.push({ time: f.time, lane, duration });
     freeAt[lane] = f.time + duration + .16;
@@ -70,6 +65,33 @@ function chart(buffer, difficulty) {
     }
   }
   return notes;
+}
+
+function sustainLength(frames, start, step, minimum) {
+  // Compare the sound after the attack with the few frames before it.
+  const attack = frames.slice(start, start + 5);
+  if (attack.length < 5) return 0;
+  const body = attack.reduce((sum, frame) => sum + frame.body, 0) / attack.length;
+  const mid = attack.reduce((sum, frame) => sum + frame.mid, 0) / attack.length;
+  const leadIn = frames.slice(Math.max(0, start - 5), start);
+  const baseline = leadIn.reduce((sum, frame) => sum + frame.body, 0) / Math.max(1, leadIn.length);
+  const low = attack.reduce((sum, frame) => sum + frame.low, 0) / attack.length;
+  if (body < low * .65 || body < .025 || mid < body * .25 || body < baseline * 2.5) return 0;
+
+  // A brief dip is fine. A fresh attack or a sustained drop ends the hold.
+  const limit = Math.min(frames.length, start + Math.round(1.6 / step));
+  let end = start + 4;
+  for (let i = start + 5; i < limit; i++) {
+    const frame = frames[i];
+    if (frame.attack > Math.max(1, frames[start].attack * .75)) break;
+    if (frame.body >= body * .20 && frame.mid >= mid * .16) {
+      end = i;
+    } else if (i - end >= 3) {
+      break;
+    }
+  }
+  const length = (end + 1 - start) * step;
+  return length >= minimum ? length : 0;
 }
 
 function practice(context) {
