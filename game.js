@@ -23,14 +23,8 @@ try {
 function keyName(code) {
   return keyNames[code] ?? code.replace(/^(Key|Digit|Arrow)/, '');
 }
-function refreshKeys(count) {
-  const labels = bindings[count].map(keyName);
-  $('leftKeys').textContent = labels.slice(0, count / 2).join(' / ');
-  $('rightKeys').textContent = labels.slice(count / 2).join(' / ');
-}
 function saveBindings(count, layout) {
   bindings[count] = layout;
-  refreshKeys(active?.laneCount ?? Number($('laneMode').value));
   try {
     localStorage.setItem('flowdrop-bindings', JSON.stringify(bindings));
   } catch {
@@ -305,7 +299,6 @@ async function importTracks(files, chartFile, demo = false) {
           selected = track;
           if (chartFile) $('laneMode').value = String(imported.lanes);
           $('difficulty').value = chartFile ? 'Custom' : 'Normal';
-          refreshKeys(Number($('laneMode').value));
         }
         added++;
       } catch (error) {
@@ -355,7 +348,6 @@ $('start').onclick = () => importTracks([...$('audio').files], $('chartFile').fi
 $('demo').onclick = () => importTracks([], null, true);
 $('difficulty').onchange = updateControls;
 $('laneMode').onchange = () => {
-  refreshKeys(Number($('laneMode').value));
   renderTracks();
 };
 $('playTrack').onclick = playSelection;
@@ -449,7 +441,6 @@ function startRun(run) {
   $('game').hidden = false;
   fitPlayfield();
   $('pause').disabled = false;
-  refreshKeys(run.laneCount);
   $('exit').focus();
   frame = requestAnimationFrame(tick);
 }
@@ -679,8 +670,9 @@ function tick() {
       ctx.fill();
     }
     if (!note.brokenHold) {
-      const left = x(note.lane + .08, y);
-      const width = x(note.lane + .92, y) - left;
+      const inset = note.duration ? .24 : .08;
+      const left = x(note.lane + inset, y);
+      const width = x(note.lane + 1 - inset, y) - left;
       const height = touchScreen.matches ? 24 : 16;
       ctx.beginPath();
       ctx.roundRect(left, y - height / 2, width, height, 5);
@@ -747,4 +739,3 @@ $('start').disabled = !$('audio').files.length;
 $('message').textContent = 'Audio stays on this device. Tracks are kept until this page is closed or refreshed.';
 
 if (touchScreen.matches) $('laneMode').value = '4';
-refreshKeys(Number($('laneMode').value));
