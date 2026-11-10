@@ -661,18 +661,20 @@ function tick() {
     const y = note.brokenHold ? line : yAt(note.time);
     const tail = yAt(note.time + note.duration);
     ctx.fillStyle = note.duration ? '#d1ff69' : note.lane < active.laneCount / 2 ? '#9b94ff' : '#ff9dcf';
+    const leftLane = note.lane + .08;
+    const rightLane = note.lane + .92;
+    const left = x(leftLane, y);
+    const right = x(rightLane, y);
     if (note.duration && (!note.brokenHold || tail < line)) {
       ctx.beginPath();
-      ctx.moveTo(x(note.lane + .24, tail), tail);
-      ctx.lineTo(x(note.lane + .76, tail), tail);
-      ctx.lineTo(x(note.lane + .76, y), y);
-      ctx.lineTo(x(note.lane + .24, y), y);
+      ctx.moveTo(x(leftLane, tail), tail);
+      ctx.lineTo(x(rightLane, tail), tail);
+      ctx.lineTo(right, y);
+      ctx.lineTo(left, y);
       ctx.fill();
     }
     if (!note.brokenHold) {
-      const inset = note.duration ? .24 : .08;
-      const left = x(note.lane + inset, y);
-      const width = x(note.lane + 1 - inset, y) - left;
+      const width = right - left;
       const height = touchScreen.matches ? 24 : 16;
       ctx.beginPath();
       ctx.roundRect(left, y - height / 2, width, height, 5);
