@@ -1,7 +1,7 @@
 const modes = {
-  Easy: { gap: .29, threshold: 2.4, hold: .70 },
-  Normal: { gap: .22, threshold: 2.05, hold: .55, chord: 3.6, peak: 4.5, pressure: 19, reliefPeak: 2 },
-  Hard: { gap: .105, threshold: 1.15, hold: .48, chord: 2.9, peak: 6.5, pressure: 34, reliefPeak: 3 }
+  Easy: { gap: .29, threshold: 2.4, hold: .64 },
+  Normal: { gap: .22, threshold: 2.05, hold: .48, doubleHold: .76, chord: 3.6, peak: 4.5, pressure: 19, reliefPeak: 2 },
+  Hard: { gap: .105, threshold: 1.15, hold: .42, doubleHold: .62, chord: 2.9, peak: 6.5, pressure: 34, reliefPeak: 3 }
 };
 
 function chart(buffer, difficulty) {
@@ -38,6 +38,7 @@ function chart(buffer, difficulty) {
   const lanes = [1, 4, 0, 5, 2, 3];
   const freeAt = Array(6).fill(0);
   let last = -Infinity, lastHold = -Infinity, holdEnd = -Infinity;
+  let holdLane = -1, pairedHold = false;
   let recent = 0;
   for (let i = 0; i < frames.length - 1; i++) {
     const f = frames[i];
@@ -54,32 +55,39 @@ function chart(buffer, difficulty) {
     while (recentStarts.length && f.time - recentStarts[0].time >= 1) recentStarts.shift();
     const load = recentStarts.reduce((sum, start) => sum + start.weight, 0);
     if (peak && load + 1 > peak) continue;
+    const holding = f.time < holdEnd;
+    if (holding && pairedHold) continue;
     const lane = Array.from({ length: 6 }, (_, j) => lanes[(notes.length + j) % 6])
-      .find(candidate => freeAt[candidate] <= f.time);
+      .find(candidate => freeAt[candidate] <= f.time &&
+        (!holding || (candidate < 3) !== (holdLane < 3)));
     if (lane === undefined) continue;
 
     let duration = 0;
     if (!resting && f.time - lastHold > 3) {
       duration = sustainLength(frames, i, hop / rate, mode.hold);
       if (f.time + duration >= buffer.duration) duration = 0;
-      if (duration) {
-        lastHold = f.time;
-        holdEnd = f.time + duration;
-      }
     }
     notes.push({ time: f.time, lane, duration });
     freeAt[lane] = f.time + duration + .16;
     last = f.time;
     let weight = 1;
     // A held key plus one tap already uses both available fingers.
+    pairedHold = holding && pairedHold;
     if (!resting && mode.chord && load + 1.5 <= peak && f.time >= holdEnd + .08 &&
+        (!duration || (duration >= mode.doubleHold && f.attack > threshold * 2.5)) &&
         f.attack > Math.max(.22, recent * mode.chord * (1.35 - drive * .65))) {
       const opposite = (lane + 3) % 6;
       if (freeAt[opposite] <= f.time) {
-        notes.push({ time: f.time, lane: opposite, duration: 0 });
-        freeAt[opposite] = f.time + .16;
+        notes.push({ time: f.time, lane: opposite, duration });
+        freeAt[opposite] = f.time + duration + .16;
+        pairedHold = duration > 0;
         weight = 1.5;
       }
+    }
+    if (duration) {
+      lastHold = f.time;
+      holdEnd = f.time + duration;
+      holdLane = lane;
     }
     if (peak) recentStarts.push({time: f.time, weight});
     if (mode.pressure && !resting) {
@@ -131,17 +139,17 @@ function sustainLength(frames, start, step, minimum) {
   const leadIn = frames.slice(Math.max(0, start - 5), start);
   const baseline = leadIn.reduce((sum, frame) => sum + frame.body, 0) / Math.max(1, leadIn.length);
   const low = attack.reduce((sum, frame) => sum + frame.low, 0) / attack.length;
-  if (body < low * .65 || body < .025 || mid < body * .25 || body < baseline * 2.5) return 0;
+  if (body < low * .65 || body < .018 || mid < body * .22 || body < baseline * 1.85) return 0;
 
   // A brief dip is fine. A fresh attack or a sustained drop ends the hold.
   const limit = Math.min(frames.length, start + Math.round(1.6 / step));
   let end = start + 4;
   for (let i = start + 5; i < limit; i++) {
     const frame = frames[i];
-    if (frame.attack > Math.max(1, frames[start].attack * .75)) break;
-    if (frame.body >= body * .20 && frame.mid >= mid * .16) {
+    if (frame.attack > Math.max(1.4, frames[start].attack * .9) && frame.mid < mid * .55) break;
+    if (frame.body >= body * .17 && frame.mid >= mid * .14) {
       end = i;
-    } else if (i - end >= 3) {
+    } else if (i - end >= 5) {
       break;
     }
   }
