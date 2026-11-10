@@ -679,7 +679,12 @@ function tick() {
       ctx.fill();
     }
     if (!note.brokenHold) {
-      ctx.fillRect(x(note.lane + .08, y), y - 5, x(note.lane + .92, y) - x(note.lane + .08, y), 10);
+      const left = x(note.lane + .08, y);
+      const width = x(note.lane + .92, y) - left;
+      const height = touchScreen.matches ? 24 : 16;
+      ctx.beginPath();
+      ctx.roundRect(left, y - height / 2, width, height, 5);
+      ctx.fill();
     }
     ctx.restore();
   }
