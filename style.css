@@ -43,9 +43,9 @@
   #game .hud{padding:0;gap:4px}
   #game .hud button{font-size:.8rem;padding:5px 8px;margin:0}
   #game .touch-hint{display:none}
-  #game .playfield{width:96%;height:100%;margin-inline:auto}
-  #game[data-touch-width=compact] .playfield{width:84%}
-  #game[data-touch-width=wide] .playfield{width:100%}
+  #game .playfield{width:90%;height:100%;margin-inline:auto}
+  #game[data-touch-width=compact] .playfield{width:80%}
+  #game[data-touch-width=wide] .playfield{width:96%}
   #field{height:100%}
 }
 
