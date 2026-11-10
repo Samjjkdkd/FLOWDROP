@@ -180,6 +180,100 @@ async function openAudio() {
   await audio.resume();
 }
 
+const calibrationBeat = .65;
+const calibrationBeats = 14;
+let calibrationRun;
+
+function stopCalibration() {
+  if (calibrationRun?.source) {
+    calibrationRun.source.onended = null;
+    calibrationRun.source.stop();
+    calibrationRun.source.disconnect();
+  }
+  calibrationRun = null;
+  $('calibrationPad').disabled = true;
+  $('applyCalibration').disabled = true;
+  $('startCalibration').disabled = false;
+}
+
+function sampleCalibration(now = audio.currentTime) {
+  const run = calibrationRun;
+  if (!run?.source) return;
+  const elapsed = now - run.start;
+  const beat = Math.round(elapsed / calibrationBeat);
+  const offset = (elapsed - beat * calibrationBeat) * 1000;
+  if (beat < 2 || beat >= calibrationBeats || Math.abs(offset) > 250 || run.samples.has(beat)) return;
+  run.samples.set(beat, offset);
+  const values = [...run.samples.values()].sort((a, b) => a - b);
+  if (values.length < 6) {
+    $('calibrationMessage').textContent = values.length + ' / 6 taps recorded';
+    return;
+  }
+  const middle = Math.floor(values.length / 2);
+  run.offset = Math.round(values.length % 2 ? values[middle] : (values[middle - 1] + values[middle]) / 2);
+  $('calibrationMessage').textContent = values.length + ' taps / Suggested offset: ' + run.offset + ' ms';
+  $('applyCalibration').disabled = false;
+}
+
+$('openCalibration').onclick = () => {
+  $('calibrationMessage').textContent = 'Current offset: ' + $('offset').value + ' ms';
+  $('calibration').showModal();
+};
+$('calibration').addEventListener('close', stopCalibration);
+$('startCalibration').onclick = async () => {
+  stopCalibration();
+  const run = {samples: new Map()};
+  calibrationRun = run;
+  $('startCalibration').disabled = true;
+  $('calibrationMessage').textContent = 'Listen for the two count-in clicks.';
+  try {
+    await openAudio();
+    if (calibrationRun !== run || !$('calibration').open) return;
+    const rate = audio.sampleRate;
+    const buffer = audio.createBuffer(1, Math.ceil(rate * calibrationBeat * calibrationBeats), rate);
+    const samples = buffer.getChannelData(0);
+    for (let beat = 0; beat < calibrationBeats; beat++) {
+      const start = Math.round(beat * calibrationBeat * rate);
+      for (let i = 0; i < rate * .065; i++) {
+        const t = i / rate;
+        samples[start + i] = .45 * Math.sin(2 * Math.PI * 560 * t) * Math.exp(-80 * t);
+      }
+    }
+    const source = audio.createBufferSource();
+    source.buffer = buffer;
+    source.connect(audio.destination);
+    run.source = source;
+    run.start = audio.currentTime + .30;
+    source.onended = () => {
+      source.disconnect();
+      run.source = null;
+      $('calibrationPad').disabled = true;
+      $('startCalibration').disabled = false;
+      if (run.offset === undefined) $('calibrationMessage').textContent = 'Too few taps. Start the clicks to try again.';
+    };
+    source.start(run.start);
+    $('calibrationPad').disabled = false;
+    $('calibrationPad').focus();
+  } catch (error) {
+    stopCalibration();
+    $('calibrationMessage').textContent = error.message || 'Could not start audio.';
+  }
+};
+$('calibrationPad').onpointerdown = event => {
+  if (event.button === 0 && !event.ctrlKey) sampleCalibration();
+};
+$('calibration').onkeydown = event => {
+  if (event.code !== 'Space' || !calibrationRun?.source) return;
+  event.preventDefault();
+  if (!event.repeat) sampleCalibration();
+};
+$('applyCalibration').onclick = () => {
+  if (calibrationRun?.offset === undefined) return;
+  $('offset').value = calibrationRun.offset;
+  $('message').textContent = 'Timing offset applied: ' + calibrationRun.offset + ' ms.';
+  $('calibration').close();
+};
+
 async function decode(file) {
   if (!file) return practice(audio);
   if (file.size > 40 * 1024 * 1024) throw new Error('Audio must be under 40 MB.');

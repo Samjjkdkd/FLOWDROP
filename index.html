@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>FLOWDROP</title><link rel="stylesheet" href="style.css?v=62f8bcb">
+<title>FLOWDROP</title><link rel="stylesheet" href="style.css?v=timing-1">
 <header><a href="./">FLOW<span>DROP</span></a></header>
 <main><section id="setup"><p class="label">LOCAL AUDIO / AUTO CHART</p><h1>Catch the<br><em>flow.</em></h1>
 <p>Import up to 30 tracks. FLOWDROP generates Easy, Normal and Hard charts for each.</p>
@@ -10,7 +10,7 @@
 <p>Start with the built-in practice beat, or bring your own music. You can save a chart as JSON and import it again with the same version of the song. In Settings, you can adjust scroll speed, timing offset, lane view, and key sounds.</p>
 </details>
 <label class="picker">Choose audio files <input id="audio" type="file" multiple accept="audio/*,.mp3,.wav,.m4a,.ogg"></label>
-<label class="picker">Optional chart for a single track (.json) <input id="chartFile" type="file" accept=".json,application/json"></label><button id="start" disabled>Import &amp; generate</button><button id="openKeySettings">Key bindings</button><button id="openChartSettings">Advanced chart settings</button><button id="demo" disabled>Try practice beat</button>
+<label class="picker">Optional chart for a single track (.json) <input id="chartFile" type="file" accept=".json,application/json"></label><button id="start" disabled>Import &amp; generate</button><button id="openKeySettings">Key bindings</button><button id="openChartSettings">Advanced chart settings</button><button id="openCalibration">Calibrate timing</button><button id="demo" disabled>Try practice beat</button>
 <p id="message" role="status">Game controls require JavaScript. If this message persists, open this file in a web browser.</p>
 <aside class="library" hidden aria-labelledby="libraryTitle">
   <div class="library-head"><h2 id="libraryTitle">Tracks</h2><span id="trackCount"></span></div>
@@ -18,6 +18,15 @@
   <div class="track-controls"><label>Mode <select id="laneMode"><option value="2">2 keys</option><option value="4">4 keys</option><option value="6" selected>6 keys</option><option value="8">8 keys</option></select></label><label>Difficulty <select id="difficulty"><option>Easy</option><option selected>Normal</option><option>Hard</option><option disabled>Custom</option></select></label> <button id="saveTrack" disabled>Save chart</button><button id="playTrack" disabled>Play</button></div>
   <p id="libraryMessage" role="status"></p>
 </aside>
+<dialog id="calibration" aria-labelledby="calibrationTitle">
+  <h2 id="calibrationTitle">Calibrate timing</h2>
+  <p>Listen for the steady clicks. Tap the pad or press Space on the beat. The first two clicks are a count-in.</p>
+  <button id="startCalibration">Start clicks</button>
+  <button id="calibrationPad" disabled>Tap to the beat</button>
+  <p id="calibrationMessage" role="status">Use the same speakers or headphones you play with.</p>
+  <button id="applyCalibration" disabled>Apply offset</button>
+  <form method="dialog"><button>Close</button></form>
+</dialog>
 <dialog id="keySettings" aria-labelledby="keySettingsTitle">
   <h2 id="keySettingsTitle">Key bindings</h2>
   <p>Select a lane button, then press the key you want to use.</p>
@@ -40,11 +49,11 @@
 <dialog id="settingsDialog" aria-labelledby="settingsTitle"><h2 id="settingsTitle">Settings</h2>
 <div class="settings"><label class="touch-setting">Landscape width <select id="touchWidth"><option value="compact">Compact</option><option value="auto" selected>Auto</option><option value="wide">Wide</option></select></label><label>Lane view <select id="view"><option value="perspective">Perspective</option><option value="vertical">Vertical</option></select></label>
 <label>Scroll speed <select id="speed"><option value="2.5">Slow</option><option value="1.8" selected>Normal</option><option value="1.2">Fast</option></select></label>
-<label>Key sounds <select id="sounds"><option value="off">Off</option><option value="on">On</option></select></label><label>Timing offset (ms) <input id="offset" type="number" value="0" min="-250" max="250" step="5"></label></div>
+<label>Key sounds <select id="sounds"><option value="off">Off</option><option value="on">On</option></select></label><label>Timing offset (ms) <input id="offset" type="number" value="0" min="-250" max="250" step="1"></label></div>
 <p>Settings apply to the next play or replay.</p><form method="dialog"><button>Done</button></form></dialog><dialog id="results" aria-labelledby="resultTitle">
 <h2 id="resultTitle">Track complete</h2>
 <div class="result-grid"><div><small>SCORE</small><strong id="finalScore"></strong></div><div><small>ACCURACY</small><strong id="accuracy"></strong></div></div>
 <p id="result"></p><button id="replay">Replay</button> <button id="closeResults">Back to tracks</button>
 </dialog></section></main>
 <script src="chart.js?v=62f8bcb" defer></script>
-<script src="game.js?v=62f8bcb" defer></script></html>
+<script src="game.js?v=timing-1" defer></script></html>

@@ -73,3 +73,7 @@
 #keySettings::backdrop{background:#08080ccc}
 #bindingList{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:12px}
 #bindingList button[data-listening]{border-color:var(--mint);color:var(--mint)}
+
+#calibration{width:min(460px,calc(100% - 32px));padding:20px;color:var(--ink);background:#161621;border:1px solid var(--line)}
+#calibration::backdrop{background:#08080ccc}
+#calibrationPad{display:block;width:100%;min-height:76px;margin:12px 0;touch-action:manipulation}
