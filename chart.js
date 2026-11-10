@@ -1,7 +1,7 @@
 const modes = {
-  Easy: { gap: .29, threshold: 2.4, hold: .64 },
-  Normal: { gap: .22, threshold: 2.05, hold: .48, doubleHold: .76, chord: 3.6, peak: 4.5, pressure: 19, reliefPeak: 2 },
-  Hard: { gap: .105, threshold: 1.15, hold: .42, doubleHold: .62, chord: 2.9, peak: 6.5, pressure: 34, reliefPeak: 3 }
+  Easy: { gap: .29, threshold: 2.4, hold: .68 },
+  Normal: { gap: .22, threshold: 2.05, hold: .52, doubleHold: .76, chord: 3.6, peak: 4.5, pressure: 19, reliefPeak: 2 },
+  Hard: { gap: .105, threshold: 1.15, hold: .46, doubleHold: .62, chord: 2.9, peak: 6.5, pressure: 34, reliefPeak: 3 }
 };
 
 const chartDefaults = {sectionWindow: 8, pressureWindow: 8, reliefDuration: 2};
