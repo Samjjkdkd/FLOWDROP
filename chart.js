@@ -1,7 +1,7 @@
 const modes = {
-  Easy: { gap: .29, threshold: 2.4, hold: .68 },
-  Normal: { gap: .22, threshold: 2.05, hold: .52, doubleHold: .76, chord: 3.6, peak: 4.5 },
-  Hard: { gap: .105, threshold: 1.15, hold: .46, doubleHold: .62, chord: 2.9, peak: 6.5 }
+  Easy: { gap: .29, threshold: 2.4, hold: .66 },
+  Normal: { gap: .22, threshold: 2.05, hold: .50, doubleHold: .76, chord: 3.6, peak: 5.5 },
+  Hard: { gap: .105, threshold: 1.15, hold: .44, doubleHold: .62, chord: 2.9, peak: 7.5 }
 };
 
 const chartDefaults = {sectionWindow: 8};
@@ -60,7 +60,7 @@ function chart(buffer, difficulty, settings = {modes, ...chartDefaults}) {
     if (lane === undefined) continue;
 
     let duration = 0;
-    if (f.time - lastHold >= 4) {
+    if (f.time - lastHold >= 3) {
       duration = sustainLength(frames, i, hop / rate, mode.hold);
       if (f.time + duration >= buffer.duration) duration = 0;
     }
