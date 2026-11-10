@@ -445,7 +445,9 @@ function startRun(run) {
   active = {...run, notes: run.notes.map(note => ({...note})), ...playback,
     duration: run.buffer.duration, effects: [], cursor: 0, score: 0, combo: 0, hits: 0, fullCombo: true};
   $('setup').hidden = true;
+  $('game').dataset.laneCount = String(run.laneCount);
   $('game').hidden = false;
+  fitPlayfield();
   $('pause').disabled = false;
   refreshKeys(run.laneCount);
   $('exit').focus();
@@ -590,12 +592,32 @@ for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) {
 const touchScreen = matchMedia('(any-pointer: coarse)');
 const center = 420;
 const laneTop = 90;
-const line = 510;
+const portraitTouch = matchMedia('(any-pointer: coarse) and (orientation: portrait)');
+let line = 510;
+
+function fitPlayfield() {
+  if (!active) return;
+  const bounds = canvas.getBoundingClientRect();
+  const portraitFour = portraitTouch.matches && active.laneCount === 4;
+  const height = portraitFour && bounds.width > 0
+    ? Math.round(canvas.width * bounds.height / bounds.width)
+    : 600;
+  if (canvas.height !== height) canvas.height = height;
+  line = portraitFour ? Math.round(height * .78) : 510;
+}
+
+new ResizeObserver(() => {
+  if (!active || active.finished) return;
+  fitPlayfield();
+}).observe(canvas);
+
 function x(lane, y) {
   y = Math.min(y, line);
   const laneWidth = (touchScreen.matches ? 822 : 678) / active.laneCount;
   const perspective = (y - laneTop) / (line - laneTop);
-  return center + (lane - active.laneCount / 2) * (active.vertical ? laneWidth : laneWidth * (.28 + .72 * perspective));
+  const distantWidth = portraitTouch.matches && active.laneCount === 4 ? .78 : .28;
+  return center + (lane - active.laneCount / 2) *
+    (active.vertical ? laneWidth : laneWidth * (distantWidth + (1 - distantWidth) * perspective));
 }
 
 function tick() {

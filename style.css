@@ -37,6 +37,15 @@
 }
 @media (any-pointer:coarse) and (orientation:portrait){
   #field{height:min(64dvh,125vw)}
+  #game[data-lane-count="4"]{
+    height:calc(100dvh - 16px);
+    display:grid;grid-template-rows:auto minmax(0,1fr);gap:4px
+  }
+  #game[data-lane-count="4"] .hud{padding:0;gap:4px}
+  #game[data-lane-count="4"] .hud span{display:flex;flex-wrap:wrap;gap:4px}
+  #game[data-lane-count="4"] .hud button{font-size:.8rem;padding:6px 8px;margin:0}
+  #game[data-lane-count="4"] .playfield,#game[data-lane-count="4"] #field{height:100%;min-height:0}
+  #game[data-lane-count="4"] .touch-hint{display:none}
 }
 @media (any-pointer:coarse) and (orientation:landscape){
   #game{height:calc(100dvh - 16px);display:grid;grid-template-rows:auto minmax(0,1fr);gap:4px}
