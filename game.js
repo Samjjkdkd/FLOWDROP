@@ -665,19 +665,26 @@ function tick() {
     const rightLane = note.lane + .92;
     const left = x(leftLane, y);
     const right = x(rightLane, y);
-    if (note.duration && (!note.brokenHold || tail < line)) {
+    const height = touchScreen.matches ? 24 : 16;
+    if (note.duration) {
+      if (!note.brokenHold || tail < line) {
+        const upper = tail - height / 2;
+        const lower = note.brokenHold ? y : y + height / 2;
+        const upperLeft = x(leftLane, tail);
+        const upperRight = x(rightLane, tail);
+        const radius = Math.min(height / 2, (lower - upper) / 2, (upperRight - upperLeft) / 2);
+        ctx.beginPath();
+        ctx.moveTo((upperLeft + upperRight) / 2, upper);
+        ctx.arcTo(upperRight, upper, right, lower, radius);
+        ctx.arcTo(right, lower, left, lower, radius);
+        ctx.arcTo(left, lower, upperLeft, upper, radius);
+        ctx.arcTo(upperLeft, upper, upperRight, upper, radius);
+        ctx.closePath();
+        ctx.fill();
+      }
+    } else {
       ctx.beginPath();
-      ctx.moveTo(x(leftLane, tail), tail);
-      ctx.lineTo(x(rightLane, tail), tail);
-      ctx.lineTo(right, y);
-      ctx.lineTo(left, y);
-      ctx.fill();
-    }
-    if (!note.brokenHold) {
-      const width = right - left;
-      const height = touchScreen.matches ? 24 : 16;
-      ctx.beginPath();
-      ctx.roundRect(left, y - height / 2, width, height, 5);
+      ctx.roundRect(left, y - height / 2, right - left, height, 5);
       ctx.fill();
     }
     ctx.restore();
