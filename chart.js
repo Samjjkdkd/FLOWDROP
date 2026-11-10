@@ -4,8 +4,10 @@ const modes = {
   Hard: { gap: .105, threshold: 1.15, hold: .42, doubleHold: .62, chord: 2.9, peak: 6.5, pressure: 34, reliefPeak: 3 }
 };
 
-function chart(buffer, difficulty) {
-  const mode = modes[difficulty];
+const chartDefaults = {sectionWindow: 8, pressureWindow: 8, reliefDuration: 2};
+
+function chart(buffer, difficulty, settings = {modes, ...chartDefaults}) {
+  const mode = settings.modes[difficulty];
   const input = buffer.getChannelData(0);
   const rate = buffer.sampleRate;
   const stride = Math.max(1, Math.floor(rate / 12000));
@@ -28,12 +30,11 @@ function chart(buffer, difficulty) {
     previous = bands;
   }
 
-  const intensity = sectionIntensity(frames, hop / rate);
+  const intensity = sectionIntensity(frames, hop / rate, settings.sectionWindow);
   const notes = [];
   const recentStarts = [];
   const pressureStarts = [];
-  const pressureWindow = 8;
-  const reliefDuration = 2;
+  const {pressureWindow, reliefDuration} = settings;
   let reliefUntil = 0;
   const lanes = [1, 4, 0, 5, 2, 3];
   const freeAt = Array(6).fill(0);
@@ -102,9 +103,9 @@ function chart(buffer, difficulty) {
   return notes;
 }
 
-function sectionIntensity(frames, step) {
+function sectionIntensity(frames, step, windowSeconds) {
   if (!frames.length) return [];
-  const radius = Math.round(4 / step);
+  const radius = Math.round(windowSeconds / (2 * step));
   const energy = [0];
   const attacks = [0];
   for (const frame of frames) {

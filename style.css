@@ -51,3 +51,11 @@
 
 .gameplay-guide summary{cursor:pointer;color:var(--mint);font-weight:700}
 .gameplay-guide p{line-height:1.6}
+
+#chartSettings{width:min(650px,calc(100% - 32px));max-height:85dvh;padding:20px;color:var(--ink);background:#161621;border:1px solid var(--line)}
+#chartSettings::backdrop{background:#08080ccc}
+#chartSettings details{border-top:1px solid var(--line);padding:10px 0}
+#chartSettings summary{cursor:pointer;color:var(--mint);font-weight:700}
+#chartSettings label{display:grid;grid-template-columns:1fr auto;align-items:center;gap:3px 10px;margin:10px 0}
+#chartSettings small{grid-column:1 / -1;color:#b3b1bc}
+.chart-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
