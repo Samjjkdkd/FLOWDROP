@@ -110,16 +110,12 @@ async function decode(file) {
 
 const chartFields = {
   sectionWindow: ['Section window (s)', 'Larger windows smooth out brief changes in loudness and rhythm.', 2, 20, 1],
-  pressureWindow: ['Dense stretch (s)', 'How much recent play is checked before adding a breather.', 4, 20, 1],
-  reliefDuration: ['Breather length (s)', 'How long the chart reduces density and skips new chords and holds.', .5, 5, .5],
   gap: ['Base spacing (s)', 'Higher values spread out successive hits. Section intensity can shorten or widen this gap.', .08, .65, .005],
   threshold: ['Attack threshold', 'Higher values keep only more pronounced starts, such as stronger drum hits.', .5, 5, .05],
   hold: ['Minimum hold (s)', 'Higher values require a sound to sustain longer before it becomes a hold.', .25, 1.3, .01],
   doubleHold: ['Minimum double hold (s)', 'Higher values make paired holds rarer. A strong attack is also required.', .4, 1.3, .01],
   chord: ['Chord threshold', 'Higher values make two-key hits rarer.', 1, 8, .1],
   peak: ['Peak budget / second', 'A single hit costs 1. A chord costs 1.5. Lower budgets reduce bursts.', 1, 10, .5],
-  pressure: ['Breather trigger', 'Number of hit times in a dense stretch needed to trigger a breather. A chord counts as one time here.', 4, 160, 1],
-  reliefPeak: ['Breather budget / second', 'Maximum hit times per second during a breather.', 1, 6, 1]
 };
 const defaultChartSettings = {...chartDefaults, modes};
 let chartSettings = defaultChartSettings;
@@ -176,8 +172,8 @@ $('chartSettingsForm').onsubmit = event => {
     (group === 'Global' ? settings : settings.modes[group])[key] = Number(value);
   }
   for (const [level, mode] of Object.entries(settings.modes)) {
-    if (mode.reliefPeak > mode.peak || mode.doubleHold < mode.hold) {
-      $('chartSettingsMessage').textContent = level + ': the breather budget must fit within the peak budget, and double holds must be at least as long as single holds.';
+    if (mode.doubleHold < mode.hold) {
+      $('chartSettingsMessage').textContent = level + ': double holds must be at least as long as single holds.';
       return;
     }
   }
