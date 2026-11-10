@@ -39,7 +39,7 @@ function chart(buffer, difficulty, settings = {modes, ...chartDefaults}) {
   const lanes = [1, 4, 0, 5, 2, 3];
   const freeAt = Array(6).fill(0);
   let last = -Infinity, lastHold = -Infinity, holdEnd = -Infinity;
-  let holdLane = -1, pairedHold = false;
+  let holdLane = -1, pairedHold = false, lastDoubleHold = -Infinity;
   let recent = 0;
   for (let i = 0; i < frames.length - 1; i++) {
     const f = frames[i];
@@ -64,7 +64,7 @@ function chart(buffer, difficulty, settings = {modes, ...chartDefaults}) {
     if (lane === undefined) continue;
 
     let duration = 0;
-    if (!resting && f.time - lastHold > 3) {
+    if (!resting && f.time - lastHold >= 4) {
       duration = sustainLength(frames, i, hop / rate, mode.hold);
       if (f.time + duration >= buffer.duration) duration = 0;
     }
@@ -75,13 +75,15 @@ function chart(buffer, difficulty, settings = {modes, ...chartDefaults}) {
     // A held key plus one tap already uses both available fingers.
     pairedHold = holding && pairedHold;
     if (!resting && mode.chord && load + 1.5 <= peak && f.time >= holdEnd + .08 &&
-        (!duration || (duration >= mode.doubleHold && f.attack > threshold * 2.5)) &&
+        (!duration || (f.time - lastDoubleHold >= 12 &&
+          duration >= mode.doubleHold && f.attack > threshold * 3.2)) &&
         f.attack > Math.max(.22, recent * mode.chord * (1.35 - drive * .65))) {
       const opposite = (lane + 3) % 6;
       if (freeAt[opposite] <= f.time) {
         notes.push({ time: f.time, lane: opposite, duration });
         freeAt[opposite] = f.time + duration + .16;
         pairedHold = duration > 0;
+        if (pairedHold) lastDoubleHold = f.time;
         weight = 1.5;
       }
     }
@@ -142,15 +144,17 @@ function sustainLength(frames, start, step, minimum) {
   const low = attack.reduce((sum, frame) => sum + frame.low, 0) / attack.length;
   if (body < low * .65 || body < .018 || mid < body * .22 || body < baseline * 1.85) return 0;
 
-  // A brief dip is fine. A fresh attack or a sustained drop ends the hold.
-  const limit = Math.min(frames.length, start + Math.round(1.6 / step));
+  // Track the part of the sound above the pre-attack mix.
+  const bodyFloor = baseline + (body - baseline) * .34;
+  const midFloor = mid * .30;
+  const limit = Math.min(frames.length, start + Math.floor(1.3 / step));
   let end = start + 4;
   for (let i = start + 5; i < limit; i++) {
     const frame = frames[i];
     if (frame.attack > Math.max(1.4, frames[start].attack * .9) && frame.mid < mid * .55) break;
-    if (frame.body >= body * .17 && frame.mid >= mid * .14) {
+    if (frame.body >= bodyFloor && frame.mid >= midFloor) {
       end = i;
-    } else if (i - end >= 5) {
+    } else if (i - end >= 3) {
       break;
     }
   }
