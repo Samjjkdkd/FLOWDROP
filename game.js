@@ -464,6 +464,11 @@ function releaseInput(input) {
 }
 
 window.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && active && !active.finished && !$('settingsDialog').open) {
+    event.preventDefault();
+    if (!event.repeat) $('pause').click();
+    return;
+  }
   const lane = keys.indexOf(event.code);
   if ($('settingsDialog').open || !active || active.finished || lane < 0 ||
       event.altKey || event.ctrlKey || event.metaKey) return;
