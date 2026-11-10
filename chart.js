@@ -149,8 +149,15 @@ function sustainLength(frames, start, step, minimum) {
   const midFloor = mid * .30;
   const limit = Math.min(frames.length, start + Math.floor(1.3 / step));
   let end = start + 4;
+  let recentAttack = 0;
   for (let i = start + 5; i < limit; i++) {
     const frame = frames[i];
+    const elapsed = (i - start) * step;
+    const peak = frame.attack >= frames[i - 1].attack &&
+      frame.attack > (frames[i + 1]?.attack ?? 0);
+    const newAttack = frame.attack >= Math.max(.65, frames[start].attack * .28, recentAttack * 3);
+    if (elapsed >= minimum && peak && newAttack) return elapsed;
+    recentAttack = recentAttack * .9 + frame.attack * .1;
     if (frame.attack > Math.max(1.4, frames[start].attack * .9) && frame.mid < mid * .55) break;
     if (frame.body >= bodyFloor && frame.mid >= midFloor) {
       end = i;
