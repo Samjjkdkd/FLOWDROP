@@ -5,7 +5,7 @@
 <main><section id="setup"><p class="label">LOCAL AUDIO / AUTO CHART</p><h1>Catch the<br><em>flow.</em></h1>
 <p>Import up to 30 tracks. FLOWDROP generates Easy, Normal and Hard charts for each.</p>
 <details class="gameplay-guide"><summary>How to play</summary>
-<p>FLOWDROP is a six- or eight-lane rhythm game that turns your music into playable charts. Import up to 30 audio files and choose Easy, Normal, or Hard for each track. Your music is processed in your browser and stays on your device.</p>
+<p>FLOWDROP is a rhythm game with 2, 4, 6, or 8 lanes that turns your music into playable charts. Import up to 30 audio files and choose Easy, Normal, or Hard for each track. Your music is processed in your browser and stays on your device.</p>
 <p>Hit each note as it reaches the judgment line with the configured keys, or tap the pads on a touchscreen. Hold long notes until their tails reach the line, and press both lanes together for double hits. Aim for a full combo and a perfect score of 100,000.</p>
 <p>Start with the built-in practice beat, or bring your own music. You can save a chart as JSON and import it again with the same version of the song. In Settings, you can adjust scroll speed, timing offset, lane view, and key sounds.</p>
 </details>
@@ -15,13 +15,13 @@
 <aside class="library" hidden aria-labelledby="libraryTitle">
   <div class="library-head"><h2 id="libraryTitle">Tracks</h2><span id="trackCount"></span></div>
   <ul id="tracks"></ul>
-  <div class="track-controls"><label>Mode <select id="laneMode"><option value="6">6 keys</option><option value="8">8 keys</option></select></label><label>Difficulty <select id="difficulty"><option>Easy</option><option selected>Normal</option><option>Hard</option><option disabled>Custom</option></select></label> <button id="saveTrack" disabled>Save chart</button><button id="playTrack" disabled>Play</button></div>
+  <div class="track-controls"><label>Mode <select id="laneMode"><option value="2">2 keys</option><option value="4">4 keys</option><option value="6" selected>6 keys</option><option value="8">8 keys</option></select></label><label>Difficulty <select id="difficulty"><option>Easy</option><option selected>Normal</option><option>Hard</option><option disabled>Custom</option></select></label> <button id="saveTrack" disabled>Save chart</button><button id="playTrack" disabled>Play</button></div>
   <p id="libraryMessage" role="status"></p>
 </aside>
 <dialog id="keySettings" aria-labelledby="keySettingsTitle">
   <h2 id="keySettingsTitle">Key bindings</h2>
   <p>Select a lane button, then press the key you want to use.</p>
-  <label>Mode <select id="bindingMode"><option value="6">6 keys</option><option value="8">8 keys</option></select></label>
+  <label>Mode <select id="bindingMode"><option value="2">2 keys</option><option value="4">4 keys</option><option value="6" selected>6 keys</option><option value="8">8 keys</option></select></label>
   <div id="bindingList"></div>
   <p id="bindingMessage" role="status"></p>
   <form method="dialog"><button type="button" id="resetBindings">Restore defaults</button> <button>Done</button></form>

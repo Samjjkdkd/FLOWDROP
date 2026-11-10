@@ -1,15 +1,18 @@
 const $ = id => document.getElementById(id);
 const defaultBindings = {
+  2: ['KeyF', 'KeyJ'],
+  4: ['KeyD', 'KeyF', 'KeyJ', 'KeyK'],
   6: ['KeyS', 'KeyD', 'KeyF', 'KeyJ', 'KeyK', 'KeyL'],
   8: ['KeyA', 'KeyS', 'KeyD', 'KeyF', 'KeyJ', 'KeyK', 'KeyL', 'Semicolon']
 };
+const laneModes = Object.keys(defaultBindings).map(Number);
 const bindings = {...defaultBindings};
 const supportedKey = /^(Key[A-Z]|Digit[0-9]|Numpad[0-9]|Arrow(Left|Right|Up|Down)|Space|Semicolon|Quote|Comma|Period|Slash|BracketLeft|BracketRight|Backslash|Minus|Equal|Backquote)$/;
 const keyNames = {Semicolon: ';', Quote: "'", Comma: ',', Period: '.', Slash: '/',
   BracketLeft: '[', BracketRight: ']', Backslash: String.fromCharCode(92), Minus: '-', Equal: '=', Backquote: String.fromCharCode(96)};
 try {
   const stored = JSON.parse(localStorage.getItem('flowdrop-bindings'));
-  for (const count of [6, 8]) {
+  for (const count of laneModes) {
     const layout = stored?.[count];
     if (Array.isArray(layout) && layout.length === count && new Set(layout).size === count &&
         layout.every(key => typeof key === 'string' && supportedKey.test(key))) bindings[count] = layout;
@@ -100,9 +103,9 @@ let frame;
 $('audio').addEventListener('change', updateControls);
 
 function readChart(data, buffer) {
-  if (data?.version !== 1 || ![6, 8].includes(data.lanes) || !Array.isArray(data.notes) ||
+  if (data?.version !== 1 || !laneModes.includes(data.lanes) || !Array.isArray(data.notes) ||
       !data.notes.length || data.notes.length > 12000) {
-    throw new Error('Choose a valid six- or eight-lane FLOWDROP chart.');
+    throw new Error('Choose a valid 2-, 4-, 6-, or 8-lane FLOWDROP chart.');
   }
   const ends = Array(data.lanes).fill(-1);
   let previous = -1;
@@ -288,7 +291,7 @@ async function importTracks(files, chartFile, demo = false) {
       await new Promise(resolve => setTimeout(resolve, 0));
       try {
         const buffer = await decode(file);
-        const charts = Object.fromEntries([6, 8].map(count => [
+        const charts = Object.fromEntries(laneModes.map(count => [
           count, Object.fromEntries(difficulties.map(level => [level, chart(buffer, level, settings, count)]))
         ]));
         if (chartFile) {
@@ -716,4 +719,5 @@ $('demo').disabled = false;
 $('start').disabled = !$('audio').files.length;
 $('message').textContent = 'Audio stays on this device. Tracks are kept until this page is closed or refreshed.';
 
+if (touchScreen.matches) $('laneMode').value = '4';
 refreshKeys(Number($('laneMode').value));

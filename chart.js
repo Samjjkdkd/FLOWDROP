@@ -6,6 +6,13 @@ const modes = {
 
 const chartDefaults = {sectionWindow: 8};
 
+const laneOrders = {
+  2: [0, 1],
+  4: [0, 3, 1, 2],
+  6: [1, 4, 0, 5, 2, 3],
+  8: [1, 6, 2, 5, 0, 7, 3, 4]
+};
+
 function chart(buffer, difficulty, settings = {modes, ...chartDefaults}, laneCount = 6) {
   const mode = settings.modes[difficulty];
   const input = buffer.getChannelData(0);
@@ -33,7 +40,7 @@ function chart(buffer, difficulty, settings = {modes, ...chartDefaults}, laneCou
   const intensity = sectionIntensity(frames, hop / rate, settings.sectionWindow);
   const notes = [];
   const recentStarts = [];
-  const lanes = laneCount === 8 ? [1, 6, 2, 5, 0, 7, 3, 4] : [1, 4, 0, 5, 2, 3];
+  const lanes = laneOrders[laneCount];
   const half = laneCount / 2;
   const freeAt = Array(laneCount).fill(0);
   let last = -Infinity, lastHold = -Infinity, holdEnd = -Infinity;
