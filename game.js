@@ -1,5 +1,88 @@
 const $ = id => document.getElementById(id);
-const keys = ['KeyS', 'KeyD', 'KeyF', 'KeyJ', 'KeyK', 'KeyL'];
+const defaultBindings = {
+  6: ['KeyS', 'KeyD', 'KeyF', 'KeyJ', 'KeyK', 'KeyL'],
+  8: ['KeyA', 'KeyS', 'KeyD', 'KeyF', 'KeyJ', 'KeyK', 'KeyL', 'Semicolon']
+};
+const bindings = {...defaultBindings};
+const supportedKey = /^(Key[A-Z]|Digit[0-9]|Numpad[0-9]|Arrow(Left|Right|Up|Down)|Space|Semicolon|Quote|Comma|Period|Slash|BracketLeft|BracketRight|Backslash|Minus|Equal|Backquote)$/;
+const keyNames = {Semicolon: ';', Quote: "'", Comma: ',', Period: '.', Slash: '/',
+  BracketLeft: '[', BracketRight: ']', Backslash: String.fromCharCode(92), Minus: '-', Equal: '=', Backquote: String.fromCharCode(96)};
+try {
+  const stored = JSON.parse(localStorage.getItem('flowdrop-bindings'));
+  for (const count of [6, 8]) {
+    const layout = stored?.[count];
+    if (Array.isArray(layout) && layout.length === count && new Set(layout).size === count &&
+        layout.every(key => typeof key === 'string' && supportedKey.test(key))) bindings[count] = layout;
+  }
+} catch {
+  // Key bindings still work for this session when browser storage is unavailable.
+}
+function keyName(code) {
+  return keyNames[code] ?? code.replace(/^(Key|Digit|Arrow)/, '');
+}
+function refreshKeys(count) {
+  const labels = bindings[count].map(keyName);
+  $('leftKeys').textContent = labels.slice(0, count / 2).join(' / ');
+  $('rightKeys').textContent = labels.slice(count / 2).join(' / ');
+}
+function saveBindings(count, layout) {
+  bindings[count] = layout;
+  refreshKeys(active?.laneCount ?? Number($('laneMode').value));
+  try {
+    localStorage.setItem('flowdrop-bindings', JSON.stringify(bindings));
+  } catch {
+    // Storage can be disabled for local files.
+  }
+}
+function renderBindings() {
+  const count = Number($('bindingMode').value);
+  $('bindingList').replaceChildren(...bindings[count].map((code, lane) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = 'Lane ' + (lane + 1) + ' / ' + keyName(code);
+    button.onclick = () => {
+      $('bindingMessage').textContent = 'Press a key for lane ' + (lane + 1) + '.';
+      button.dataset.listening = 'true';
+    };
+    button.onblur = () => { delete button.dataset.listening; };
+    button.onkeydown = event => {
+      if (!button.dataset.listening || event.key === 'Escape' || event.key === 'Tab') return;
+      event.preventDefault();
+      if (event.repeat) return;
+      if (!supportedKey.test(event.code) || event.ctrlKey || event.metaKey || event.altKey) {
+        $('bindingMessage').textContent = 'Choose a letter, number, arrow, space, or punctuation key.';
+        return;
+      }
+      const layout = bindings[count].slice();
+      if (layout.some((key, index) => key === event.code && index !== lane)) {
+        $('bindingMessage').textContent = 'That key is already assigned to another lane.';
+        return;
+      }
+      layout[lane] = event.code;
+      saveBindings(count, layout);
+      button.textContent = 'Lane ' + (lane + 1) + ' / ' + keyName(event.code);
+      delete button.dataset.listening;
+      $('bindingMessage').textContent = 'Key updated.';
+    };
+    return button;
+  }));
+}
+$('openKeySettings').onclick = () => {
+  $('bindingMode').value = $('laneMode').value;
+  $('bindingMessage').textContent = '';
+  renderBindings();
+  $('keySettings').showModal();
+};
+$('bindingMode').onchange = () => {
+  $('bindingMessage').textContent = '';
+  renderBindings();
+};
+$('resetBindings').onclick = () => {
+  const count = Number($('bindingMode').value);
+  saveBindings(count, defaultBindings[count]);
+  renderBindings();
+  $('bindingMessage').textContent = 'Defaults restored for this mode.';
+};
 const canvas = $('field');
 const ctx = canvas.getContext('2d');
 const held = new Set();
@@ -17,15 +100,15 @@ let frame;
 $('audio').addEventListener('change', updateControls);
 
 function readChart(data, buffer) {
-  if (data?.version !== 1 || data.lanes !== 6 || !Array.isArray(data.notes) ||
+  if (data?.version !== 1 || ![6, 8].includes(data.lanes) || !Array.isArray(data.notes) ||
       !data.notes.length || data.notes.length > 12000) {
-    throw new Error('Choose a valid six-lane FLOWDROP chart.');
+    throw new Error('Choose a valid six- or eight-lane FLOWDROP chart.');
   }
-  const ends = Array(6).fill(-1);
+  const ends = Array(data.lanes).fill(-1);
   let previous = -1;
   return data.notes.map(({time, lane, duration}) => {
     if (!Number.isFinite(time) || time < 0 || time < previous ||
-        !Number.isInteger(lane) || lane < 0 || lane >= 6 ||
+        !Number.isInteger(lane) || lane < 0 || lane >= data.lanes ||
         !Number.isFinite(duration) || duration < 0 || time <= ends[lane] ||
         time + duration > buffer.duration + .02) {
       throw new Error('Invalid chart or mismatched audio. Choose the original track version.');
@@ -35,13 +118,13 @@ function readChart(data, buffer) {
     return {time, lane, duration};
   });
 }
-function saveChart(track, notes, difficulty) {
+function saveChart(track, notes, difficulty, laneCount) {
   if (!notes?.length) return;
-  const data = {version: 1, lanes: 6, notes};
+  const data = {version: 1, lanes: laneCount, notes};
   const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'}));
   const link = document.createElement('a');
   link.href = url;
-  link.download = track.name + '-' + difficulty.toLowerCase() + '.json';
+  link.download = track.name + '-' + difficulty.toLowerCase() + '-' + laneCount + 'k.json';
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
@@ -52,7 +135,7 @@ function updateControls() {
   $('start').disabled = loading || full || !$('audio').files.length;
   $('demo').disabled = loading || full;
   $('exit').disabled = loading;
-  $('playTrack').disabled = loading || !selected?.charts[$('difficulty').value]?.length;
+  $('playTrack').disabled = loading || !selected?.charts[$('laneMode').value]?.[$('difficulty').value]?.length;
   $('saveGame').disabled = $('saveTrack').disabled = $('playTrack').disabled;
   $('replayGame').disabled = loading || !lastRun;
   $('trackCount').textContent = tracks.length + ' / ' + trackLimit;
@@ -86,7 +169,7 @@ function renderTracks() {
   }));
   const difficulty = $('difficulty');
   for (const option of difficulty.options) {
-    option.disabled = !selected?.charts[option.value]?.length;
+    option.disabled = !selected?.charts[$('laneMode').value]?.[option.value]?.length;
   }
   if (difficulty.selectedOptions[0]?.disabled) {
     difficulty.value = [...difficulty.options].find(option => !option.disabled)?.value ?? 'Normal';
@@ -205,14 +288,21 @@ async function importTracks(files, chartFile, demo = false) {
       await new Promise(resolve => setTimeout(resolve, 0));
       try {
         const buffer = await decode(file);
-        const charts = Object.fromEntries(difficulties.map(level => [level, chart(buffer, level, settings)]));
-        if (chartFile) charts.Custom = readChart(imported, buffer);
-        if (!Object.values(charts).some(notes => notes.length)) throw new Error('No clear hits found.');
+        const charts = Object.fromEntries([6, 8].map(count => [
+          count, Object.fromEntries(difficulties.map(level => [level, chart(buffer, level, settings, count)]))
+        ]));
+        if (chartFile) {
+          const custom = readChart(imported, buffer);
+          charts[imported.lanes].Custom = custom;
+        }
+        if (!Object.values(charts).some(group => Object.values(group).some(notes => notes.length))) throw new Error('No clear hits found.');
         const track = {file, name, charts};
         tracks.push(track);
         if (!added) {
           selected = track;
+          if (chartFile) $('laneMode').value = String(imported.lanes);
           $('difficulty').value = chartFile ? 'Custom' : 'Normal';
+          refreshKeys(Number($('laneMode').value));
         }
         added++;
       } catch (error) {
@@ -240,7 +330,8 @@ async function importTracks(files, chartFile, demo = false) {
 async function playSelection() {
   const track = selected;
   const difficulty = $('difficulty').value;
-  const notes = track?.charts[difficulty];
+  const laneCount = Number($('laneMode').value);
+  const notes = track?.charts[laneCount]?.[difficulty];
   if (loading || !notes?.length) return;
   stopRun();
   loading = true;
@@ -248,7 +339,7 @@ async function playSelection() {
   try {
     await openAudio();
     const buffer = lastRun?.track === track ? lastRun.buffer : await decode(track.file);
-    startRun({track, buffer, notes, difficulty});
+    startRun({track, buffer, notes, difficulty, laneCount});
   } catch (error) {
     $('libraryMessage').textContent = error.message;
   } finally {
@@ -260,9 +351,13 @@ async function playSelection() {
 $('start').onclick = () => importTracks([...$('audio').files], $('chartFile').files[0]);
 $('demo').onclick = () => importTracks([], null, true);
 $('difficulty').onchange = updateControls;
+$('laneMode').onchange = () => {
+  refreshKeys(Number($('laneMode').value));
+  renderTracks();
+};
 $('playTrack').onclick = playSelection;
-$('saveTrack').onclick = () => saveChart(selected, selected?.charts[$('difficulty').value], $('difficulty').value);
-$('saveGame').onclick = () => saveChart(lastRun.track, lastRun.notes, lastRun.difficulty);
+$('saveTrack').onclick = () => saveChart(selected, selected?.charts[$('laneMode').value]?.[$('difficulty').value], $('difficulty').value, Number($('laneMode').value));
+$('saveGame').onclick = () => saveChart(lastRun.track, lastRun.notes, lastRun.difficulty, lastRun.laneCount);
 $('openSettings').onclick = () => $('settingsDialog').showModal();
 $('touchWidth').onchange = event => {
   $('game').dataset.touchWidth = event.target.value;
@@ -349,6 +444,7 @@ function startRun(run) {
   $('setup').hidden = true;
   $('game').hidden = false;
   $('pause').disabled = false;
+  refreshKeys(run.laneCount);
   $('exit').focus();
   frame = requestAnimationFrame(tick);
 }
@@ -465,7 +561,7 @@ window.addEventListener('keydown', event => {
     if (!event.repeat) $('pause').click();
     return;
   }
-  const lane = keys.indexOf(event.code);
+  const lane = bindings[active?.laneCount]?.indexOf(event.code) ?? -1;
   if ($('settingsDialog').open || !active || active.finished || lane < 0 ||
       event.altKey || event.ctrlKey || event.metaKey) return;
   event.preventDefault();
@@ -479,7 +575,7 @@ canvas.addEventListener('pointerdown', event => {
   const bounds = canvas.getBoundingClientRect();
   const touchX = (event.clientX - bounds.left) * canvas.width / bounds.width;
   const touchY = (event.clientY - bounds.top) * canvas.height / bounds.height;
-  if (touchY < line - 65 || touchX < x(0, line) || touchX >= x(keys.length, line)) return;
+  if (touchY < line - 65 || touchX < x(0, line) || touchX >= x(active.laneCount, line)) return;
   const lane = Math.floor((touchX - x(0, line)) / (x(1, line) - x(0, line)));
   canvas.setPointerCapture(event.pointerId);
   press(lane, event.pointerId);
@@ -494,16 +590,16 @@ const laneTop = 90;
 const line = 510;
 function x(lane, y) {
   y = Math.min(y, line);
-  const laneWidth = touchScreen.matches ? 137 : 113;
+  const laneWidth = (touchScreen.matches ? 822 : 678) / active.laneCount;
   const perspective = (y - laneTop) / (line - laneTop);
-  return center + (lane - 3) * (active.vertical ? laneWidth : 32 + (laneWidth - 32) * perspective);
+  return center + (lane - active.laneCount / 2) * (active.vertical ? laneWidth : laneWidth * (.28 + .72 * perspective));
 }
 
 function tick() {
   const t = time();
   const { notes, travel } = active;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  for (let i = 0; i <= 6; i++) {
+  for (let i = 0; i <= active.laneCount; i++) {
     ctx.strokeStyle = '#55556b';
     ctx.beginPath();
     ctx.moveTo(x(i, laneTop), laneTop);
@@ -512,10 +608,10 @@ function tick() {
     ctx.stroke();
   }
   ctx.fillStyle = '#d1ff69';
-  ctx.fillRect(x(0, line), line, x(6, line) - x(0, line), 2);
+  ctx.fillRect(x(0, line), line, x(active.laneCount, line) - x(0, line), 2);
   if (touchScreen.matches) {
-    for (let lane = 0; lane < keys.length; lane++) {
-      ctx.fillStyle = lane < 3 ? '#9b94ff35' : '#ff9dcf35';
+    for (let lane = 0; lane < active.laneCount; lane++) {
+      ctx.fillStyle = lane < active.laneCount / 2 ? '#9b94ff35' : '#ff9dcf35';
       ctx.fillRect(x(lane, line) + 3, line + 4, x(1, line) - x(0, line) - 6, canvas.height - line - 8);
     }
   }
@@ -548,7 +644,7 @@ function tick() {
     if (missed) ctx.globalAlpha = Math.max(0, 1 - (t - note.missedAt) / fadeDuration);
     const y = note.brokenHold ? line : yAt(note.time);
     const tail = yAt(note.time + note.duration);
-    ctx.fillStyle = note.duration ? '#d1ff69' : note.lane < 3 ? '#9b94ff' : '#ff9dcf';
+    ctx.fillStyle = note.duration ? '#d1ff69' : note.lane < active.laneCount / 2 ? '#9b94ff' : '#ff9dcf';
     if (note.duration && (!note.brokenHold || tail < line)) {
       ctx.beginPath();
       ctx.moveTo(x(note.lane + .24, tail), tail);
@@ -619,3 +715,5 @@ function tick() {
 $('demo').disabled = false;
 $('start').disabled = !$('audio').files.length;
 $('message').textContent = 'Audio stays on this device. Tracks are kept until this page is closed or refreshed.';
+
+refreshKeys(Number($('laneMode').value));

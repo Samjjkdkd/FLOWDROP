@@ -6,7 +6,7 @@ const modes = {
 
 const chartDefaults = {sectionWindow: 8};
 
-function chart(buffer, difficulty, settings = {modes, ...chartDefaults}) {
+function chart(buffer, difficulty, settings = {modes, ...chartDefaults}, laneCount = 6) {
   const mode = settings.modes[difficulty];
   const input = buffer.getChannelData(0);
   const rate = buffer.sampleRate;
@@ -33,8 +33,9 @@ function chart(buffer, difficulty, settings = {modes, ...chartDefaults}) {
   const intensity = sectionIntensity(frames, hop / rate, settings.sectionWindow);
   const notes = [];
   const recentStarts = [];
-  const lanes = [1, 4, 0, 5, 2, 3];
-  const freeAt = Array(6).fill(0);
+  const lanes = laneCount === 8 ? [1, 6, 2, 5, 0, 7, 3, 4] : [1, 4, 0, 5, 2, 3];
+  const half = laneCount / 2;
+  const freeAt = Array(laneCount).fill(0);
   let last = -Infinity, lastHold = -Infinity, holdEnd = -Infinity;
   let holdLane = -1, pairedHold = false, lastDoubleHold = -Infinity;
   let recent = 0;
@@ -54,9 +55,9 @@ function chart(buffer, difficulty, settings = {modes, ...chartDefaults}) {
     if (peak && load + 1 > peak) continue;
     const holding = f.time < holdEnd;
     if (holding && pairedHold) continue;
-    const lane = Array.from({ length: 6 }, (_, j) => lanes[(notes.length + j) % 6])
+    const lane = Array.from({ length: laneCount }, (_, j) => lanes[(notes.length + j) % laneCount])
       .find(candidate => freeAt[candidate] <= f.time &&
-        (!holding || (candidate < 3) !== (holdLane < 3)));
+        (!holding || (candidate < half) !== (holdLane < half)));
     if (lane === undefined) continue;
 
     let duration = 0;
@@ -74,7 +75,7 @@ function chart(buffer, difficulty, settings = {modes, ...chartDefaults}) {
         (!duration || (f.time - lastDoubleHold >= 12 &&
           duration >= mode.doubleHold && f.attack > threshold * 3.2)) &&
         f.attack > Math.max(.22, recent * mode.chord * (1.35 - drive * .65))) {
-      const opposite = (lane + 3) % 6;
+      const opposite = (lane + half) % laneCount;
       if (freeAt[opposite] <= f.time) {
         notes.push({ time: f.time, lane: opposite, duration });
         freeAt[opposite] = f.time + duration + .16;
