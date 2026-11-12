@@ -700,7 +700,7 @@ function x(lane, y) {
   y = Math.min(y, line);
   const laneWidth = (touchScreen.matches ? 822 : 678) / active.laneCount;
   const perspective = (y - laneTop) / (line - laneTop);
-  const distantWidth = portraitTouch.matches && active.laneCount === 4 ? .78 : .28;
+  const distantWidth = portraitTouch.matches && active.laneCount === 4 ? .58 : .28;
   return center + (lane - active.laneCount / 2) *
     (active.vertical ? laneWidth : laneWidth * (distantWidth + (1 - distantWidth) * perspective));
 }
