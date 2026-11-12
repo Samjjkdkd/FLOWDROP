@@ -119,8 +119,9 @@ function chart(buffer, difficulty, settings = {modes, ...chartDefaults}, laneCou
   const mode = settings.modes[difficulty];
   const {frames, step, beat, attackFloor, voiceFloor} = analyzeTrack(buffer);
   const {length: sectionLength, sections} = vocalSections(frames, step, beat, voiceFloor);
+  const voiceEnabled = difficulty !== 'Easy';
   const hard = difficulty === 'Hard';
-  const voiceCandidates = frames.map((f, i) => difficulty !== 'Easy' &&
+  const voiceCandidates = frames.map((f, i) => voiceEnabled &&
     f.voice >= Math.max(.075, voiceFloor * (hard ? .72 : .98)) &&
     f.mid > f.low * (hard ? .28 : .42) &&
     f.body > .025 && f.voice >= (frames[i - 1]?.voice ?? 0) &&
@@ -145,9 +146,9 @@ function chart(buffer, difficulty, settings = {modes, ...chartDefaults}, laneCou
     const onGrid = beat && gridDistance(f.time, beat) <= Math.min(.043, beat.spacing * .19);
     const drumAttack = f.drum >= f.attack * .45;
     const thresholdScale = beat && drumAttack ? (onGrid ? .79 : 1.34) : 1;
-    const vocalLead = sections[Math.floor(i / sectionLength)];
+    const vocalLead = voiceEnabled && sections[Math.floor(i / sectionLength)];
     const vocalHit = voiceCandidates[i] &&
-      (vocalLead || (hard && f.voice > voiceFloor * 1.25 && !drumAttack));
+      (vocalLead || (f.voice > voiceFloor * (hard ? 1.25 : 1.5) && !drumAttack));
     const mixHit = f.attack >= threshold * thresholdScale && f.attack >= before &&
       f.attack > frames[i + 1].attack;
     if (!vocalHit && !mixHit) continue;
