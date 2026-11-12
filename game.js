@@ -286,7 +286,7 @@ const chartFields = {
   sectionWindow: ['Section window (s)', 'Larger windows smooth out brief changes in loudness and rhythm.', 2, 20, 1],
   gap: ['Base spacing (s)', 'Higher values spread out successive hits. Section intensity can shorten or widen this gap.', .08, .65, .005],
   threshold: ['Attack threshold', 'Higher values keep only more pronounced starts, such as stronger drum hits.', .5, 5, .05],
-  hold: ['Minimum hold (s)', 'Minimum duration for regular holds. Normal and Hard can also place shorter holds when the tempo is clear.', .25, 1.3, .01],
+  hold: ['Minimum hold (s)', 'Minimum duration for regular holds. The generator can also place shorter holds when the tempo is clear.', .25, 1.3, .01],
   doubleHold: ['Minimum double hold (s)', 'Higher values make paired holds rarer. A strong attack is also required.', .4, 1.3, .01],
   chord: ['Chord threshold', 'Higher values make two-key hits rarer.', 1, 8, .1],
   peak: ['Peak budget / second', 'A single hit costs 1. A chord costs 1.5. Lower budgets reduce bursts.', 1, 10, .5],

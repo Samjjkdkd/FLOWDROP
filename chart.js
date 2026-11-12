@@ -1,7 +1,7 @@
 const modes = {
-  Easy: { gap: .29, threshold: 2.4, hold: .66 },
-  Normal: { gap: .18, threshold: 1.95, hold: .50, doubleHold: .76, chord: 3.6, peak: 6.5 },
-  Hard: { gap: .09, threshold: 1.08, hold: .44, doubleHold: .62, chord: 2.9, peak: 8.5 }
+  Easy: { gap: .18, threshold: 1.95, hold: .50, doubleHold: .76, chord: 3.6, peak: 6.5 },
+  Normal: { gap: .105, threshold: 1.15, hold: .46, doubleHold: .66, chord: 3.0, peak: 8 },
+  Hard: { gap: .075, threshold: .90, hold: .42, doubleHold: .60, chord: 2.7, peak: 10 }
 };
 
 const chartDefaults = {sectionWindow: 8};
@@ -12,6 +12,36 @@ const laneOrders = {
   6: [1, 4, 0, 5, 2, 3],
   8: [1, 6, 2, 5, 0, 7, 3, 4]
 };
+
+const laneMotifs = [
+  [0, 1, 3, 2, 1, 0, 2, 3],
+  [0, 2, 1, 3, 2, 0, 3, 1],
+  [0, 3, 2, 1, 3, 0, 1, 2],
+  [0, 1, 2, 0, 3, 2, 1, 3]
+];
+
+function hashChartValue(value) {
+  value = Math.imul(value ^ (value >>> 16), 0x45d9f3b);
+  value = Math.imul(value ^ (value >>> 16), 0x45d9f3b);
+  return (value ^ (value >>> 16)) >>> 0;
+}
+
+function phraseLanes(seed, phrase, laneCount) {
+  const order = [...laneOrders[laneCount]];
+  let state = hashChartValue(seed ^ phrase);
+  const motif = laneMotifs[state % laneMotifs.length];
+  // Shuffle within each hand so the base gestures retain their hand changes.
+  for (const hand of [0, 1]) {
+    const positions = order.map((_, index) => index).filter(index =>
+      Number(order[index] >= laneCount / 2) === hand);
+    for (let i = positions.length - 1; i > 0; i--) {
+      state = hashChartValue(state + i + 1);
+      const a = positions[i], b = positions[state % (i + 1)];
+      [order[a], order[b]] = [order[b], order[a]];
+    }
+  }
+  return {order, motif};
+}
 
 const analyzedTracks = new WeakMap();
 
@@ -47,7 +77,11 @@ function analyzeTrack(buffer) {
     f.attack >= (frames[i - 1]?.attack ?? 0) && f.attack > (frames[i + 1]?.attack ?? 0))
     .map(f => f.attack).sort((a, b) => a - b);
   const attackFloor = attacks[Math.floor(attacks.length * .73)] ?? 0;
-  const result = {frames, step, beat: estimateBeat(frames), attackFloor};
+  let seed = frames.length;
+  for (let i = 0; i < frames.length; i += 19) {
+    seed = hashChartValue(seed ^ Math.round(frames[i].attack * 512));
+  }
+  const result = {frames, step, beat: estimateBeat(frames), attackFloor, seed};
   analyzedTracks.set(buffer, result);
   return result;
 }
@@ -96,16 +130,17 @@ function gridDistance(time, beat) {
 
 function chart(buffer, difficulty, settings = {modes, ...chartDefaults}, laneCount = 6) {
   const mode = settings.modes[difficulty];
-  const {frames, step, beat, attackFloor} = analyzeTrack(buffer);
+  const {frames, step, beat, attackFloor, seed} = analyzeTrack(buffer);
   const intensity = sectionIntensity(frames, step, settings.sectionWindow);
   const notes = [];
   const recentStarts = [];
-  const lanes = laneOrders[laneCount];
   const half = laneCount / 2;
   const freeAt = Array(laneCount).fill(0);
   let last = -Infinity, lastHold = -Infinity, holdEnd = -Infinity;
   let holdLane = -1, pairedHold = false, lastDoubleHold = -Infinity;
   let recent = 0, starts = 0, chords = 0;
+  let currentPhrase = -1, phraseStarts = 0, lastLane = -1, repeatLane = 0;
+  let layout;
   for (let i = 0; i < frames.length - 1; i++) {
     const f = frames[i];
     const before = frames[i - 1]?.attack ?? 0;
@@ -128,13 +163,24 @@ function chart(buffer, difficulty, settings = {modes, ...chartDefaults}, laneCou
     if (holding && pairedHold) continue;
     const tick = beat ? Math.round((f.time - beat.phase) / beat.spacing) : starts;
     const phrase = Math.max(0, Math.floor(tick / 32));
+    if (phrase !== currentPhrase) {
+      layout = phraseLanes(seed, phrase, laneCount);
+      currentPhrase = phrase;
+      phraseStarts = 0;
+    }
     const useGrid = onGrid && drumAttack;
-    const position = useGrid ? tick + (tick % 32 >= 24 ? Math.floor(tick / 2) : 0) : starts;
-    const firstLane = ((position + phrase % 2 * half) % laneCount + laneCount) % laneCount;
-    const lane = Array.from({ length: laneCount }, (_, j) => lanes[(firstLane + j) % laneCount])
-      .find(candidate => freeAt[candidate] <= f.time &&
+    const position = useGrid ? Math.max(0, tick - phrase * 32) : phraseStarts;
+    const motifOffset = layout.motif[position % layout.motif.length] + Math.floor(position / 8) * 3;
+    const firstLane = motifOffset % laneCount;
+    const available = Array.from({length: laneCount}, (_, j) => layout.order[(firstLane + j) % laneCount])
+      .filter(candidate => freeAt[candidate] <= f.time &&
         (!holding || (candidate < half) !== (holdLane < half)));
+    const lane = (repeatLane >= 2 ? available.find(candidate => candidate !== lastLane) : undefined)
+      ?? available[0];
     if (lane === undefined) continue;
+    repeatLane = lane === lastLane ? repeatLane + 1 : 1;
+    lastLane = lane;
+    phraseStarts++;
 
     let duration = 0;
     if (!holding && f.time - lastHold >= (mode.chord ? 1.8 : 3)) {
