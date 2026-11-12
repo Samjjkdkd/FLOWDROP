@@ -1,7 +1,7 @@
 const modes = {
   Easy: { gap: .29, threshold: 2.4, hold: .66 },
-  Normal: { gap: .22, threshold: 2.05, hold: .50, doubleHold: .76, chord: 3.6, peak: 5.5 },
-  Hard: { gap: .105, threshold: 1.15, hold: .44, doubleHold: .62, chord: 2.9, peak: 7.5 }
+  Normal: { gap: .18, threshold: 1.95, hold: .50, doubleHold: .76, chord: 3.6, peak: 6.5 },
+  Hard: { gap: .09, threshold: 1.08, hold: .44, doubleHold: .62, chord: 2.9, peak: 8.5 }
 };
 
 const chartDefaults = {sectionWindow: 8};
@@ -38,7 +38,10 @@ function analyzeTrack(buffer) {
       sum + Math.max(0, value - previous[band]) * [1.45, 1.15, .75][band], 0);
     const drum = 1.6 * Math.max(0, bands[0] - previous[0]) +
       .45 * Math.max(0, bands[2] - previous[2]);
-    frames.push({ time: start / rate, attack, drum, low: energy[0], body: energy[1] + energy[2], mid: energy[1] });
+    const middleChange = Math.abs(bands[1] - previous[1]);
+    const midShare = energy[1] / Math.max(.001, energy[0] + energy[1] + energy[2]);
+    const voice = Math.max(0, middleChange * (.65 + midShare) - drum * .23);
+    frames.push({ time: start / rate, attack, drum, voice, low: energy[0], body: energy[1] + energy[2], mid: energy[1] });
     previous = bands;
   }
 
@@ -47,7 +50,9 @@ function analyzeTrack(buffer) {
     f.attack >= (frames[i - 1]?.attack ?? 0) && f.attack > (frames[i + 1]?.attack ?? 0))
     .map(f => f.attack).sort((a, b) => a - b);
   const attackFloor = attacks[Math.floor(attacks.length * .73)] ?? 0;
-  const result = {frames, step, beat: estimateBeat(frames), attackFloor};
+  const voiceStrengths = frames.filter(f => f.voice > .035).map(f => f.voice).sort((a, b) => a - b);
+  const voiceFloor = voiceStrengths[Math.floor(voiceStrengths.length * .65)] ?? 0;
+  const result = {frames, step, beat: estimateBeat(frames), attackFloor, voiceFloor};
   analyzedTracks.set(buffer, result);
   return result;
 }
@@ -94,9 +99,32 @@ function gridDistance(time, beat) {
   return Math.abs(relative - Math.round(relative)) * beat.spacing;
 }
 
+function vocalSections(frames, step, beat, voiceFloor) {
+  const length = Math.round((beat ? beat.spacing * 16 : 4) / step);
+  const sections = [];
+  for (let start = 0; start < frames.length; start += length) {
+    const end = Math.min(frames.length, start + length);
+    let midChanges = 0, drums = 0;
+    for (let i = start; i < end; i++) {
+      const f = frames[i];
+      if (f.voice >= Math.max(.08, voiceFloor * .85) && f.mid > f.low * .3) midChanges++;
+      if (f.drum > .65) drums++;
+    }
+    sections.push(midChanges >= Math.max((end - start) * .045, drums * .55));
+  }
+  return {length, sections};
+}
+
 function chart(buffer, difficulty, settings = {modes, ...chartDefaults}, laneCount = 6) {
   const mode = settings.modes[difficulty];
-  const {frames, step, beat, attackFloor} = analyzeTrack(buffer);
+  const {frames, step, beat, attackFloor, voiceFloor} = analyzeTrack(buffer);
+  const {length: sectionLength, sections} = vocalSections(frames, step, beat, voiceFloor);
+  const hard = difficulty === 'Hard';
+  const voiceCandidates = frames.map((f, i) => difficulty !== 'Easy' &&
+    f.voice >= Math.max(.075, voiceFloor * (hard ? .72 : .98)) &&
+    f.mid > f.low * (hard ? .28 : .42) &&
+    f.body > .025 && f.voice >= (frames[i - 1]?.voice ?? 0) &&
+    f.voice > (frames[i + 1]?.voice ?? 0));
   const intensity = sectionIntensity(frames, step, settings.sectionWindow);
   const notes = [];
   const recentStarts = [];
@@ -117,8 +145,17 @@ function chart(buffer, difficulty, settings = {modes, ...chartDefaults}, laneCou
     const onGrid = beat && gridDistance(f.time, beat) <= Math.min(.043, beat.spacing * .19);
     const drumAttack = f.drum >= f.attack * .45;
     const thresholdScale = beat && drumAttack ? (onGrid ? .79 : 1.34) : 1;
-    if (f.attack < threshold * thresholdScale || f.attack < before || f.attack <= frames[i + 1].attack ||
-        f.time - last < mode.gap * density || f.time > buffer.duration - .12) continue;
+    const vocalLead = sections[Math.floor(i / sectionLength)];
+    const vocalHit = voiceCandidates[i] &&
+      (vocalLead || (hard && f.voice > voiceFloor * 1.25 && !drumAttack));
+    const mixHit = f.attack >= threshold * thresholdScale && f.attack >= before &&
+      f.attack > frames[i + 1].attack;
+    if (!vocalHit && !mixHit) continue;
+    if (vocalLead && !vocalHit && !drumAttack && f.attack < threshold * 1.22) continue;
+    // Leave space for the next syllable when a weaker backing hit leads it.
+    if (vocalLead && !vocalHit && !(onGrid && drumAttack && f.attack > threshold * 1.55) &&
+        voiceCandidates.slice(i + 1, i + Math.ceil(mode.gap / step)).some(Boolean)) continue;
+    if (f.time - last < mode.gap * density || f.time > buffer.duration - .12) continue;
     // Charge 1 for a single start and 1.5 for a two-key chord.
     const peak = mode.peak;
     while (recentStarts.length && f.time - recentStarts[0].time >= 1) recentStarts.shift();
@@ -128,7 +165,7 @@ function chart(buffer, difficulty, settings = {modes, ...chartDefaults}, laneCou
     if (holding && pairedHold) continue;
     const tick = beat ? Math.round((f.time - beat.phase) / beat.spacing) : starts;
     const phrase = Math.max(0, Math.floor(tick / 32));
-    const useGrid = onGrid && drumAttack;
+    const useGrid = onGrid && drumAttack && !vocalHit;
     const position = useGrid ? tick + (tick % 32 >= 24 ? Math.floor(tick / 2) : 0) : starts;
     const firstLane = ((position + phrase % 2 * half) % laneCount + laneCount) % laneCount;
     const lane = Array.from({ length: laneCount }, (_, j) => lanes[(firstLane + j) % laneCount])
@@ -154,7 +191,7 @@ function chart(buffer, difficulty, settings = {modes, ...chartDefaults}, laneCou
     const chordAttack = f.attack > Math.max(.14, recent * mode.chord * (onGrid ? .60 : .82));
     // A held key plus one tap already uses both available fingers.
     pairedHold = holding && pairedHold;
-    if (mode.chord && chordDue && chordAttack && load + 1.5 <= peak && f.time >= holdEnd + .08 &&
+    if (mode.chord && chordDue && chordAttack && (!vocalLead || !vocalHit || onGrid) && load + 1.5 <= peak && f.time >= holdEnd + .08 &&
         (!duration || (f.time - lastDoubleHold >= 12 &&
           duration >= mode.doubleHold && f.attack > threshold * 3.2))) {
       const opposite = (lane + half) % laneCount;
