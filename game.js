@@ -88,7 +88,6 @@ const windowSize = .155;
 const maxScore = 100000;
 const trackLimit = 30;
 const difficulties = ['Easy', 'Normal', 'Hard'];
-const chartStyles = ['balanced', 'drums', 'vocals'];
 const tracks = [];
 let selected;
 let audio, active, loading = false;
@@ -116,20 +115,15 @@ function readChart(data, buffer) {
     return {time, lane, duration};
   });
 }
-function saveChart(track, notes, difficulty, laneCount, style) {
+function saveChart(track, notes, difficulty, laneCount) {
   if (!notes?.length) return;
   const data = {version: 1, lanes: laneCount, notes};
   const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'}));
   const link = document.createElement('a');
   link.href = url;
-  link.download = track.name + '-' + difficulty.toLowerCase() + '-' + style + '-' + laneCount + 'k.json';
+  link.download = track.name + '-' + difficulty.toLowerCase() + '-' + laneCount + 'k.json';
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
-function trackNotes(track, laneCount, difficulty, style) {
-  const charts = track?.charts[laneCount];
-  return difficulty === 'Custom' ? charts?.custom : charts?.[style]?.[difficulty];
 }
 
 function updateControls() {
@@ -138,7 +132,7 @@ function updateControls() {
   $('start').disabled = loading || full || !$('audio').files.length;
   $('demo').disabled = loading || full;
   $('exit').disabled = loading;
-  $('playTrack').disabled = loading || !trackNotes(selected, $('laneMode').value, $('difficulty').value, $('chartStyle').value)?.length;
+  $('playTrack').disabled = loading || !selected?.charts[$('laneMode').value]?.[$('difficulty').value]?.length;
   $('saveGame').disabled = $('saveTrack').disabled = $('playTrack').disabled;
   $('replayGame').disabled = loading || !lastRun;
   $('trackCount').textContent = tracks.length + ' / ' + trackLimit;
@@ -172,7 +166,7 @@ function renderTracks() {
   }));
   const difficulty = $('difficulty');
   for (const option of difficulty.options) {
-    option.disabled = !trackNotes(selected, $('laneMode').value, option.value, $('chartStyle').value)?.length;
+    option.disabled = !selected?.charts[$('laneMode').value]?.[option.value]?.length;
   }
   if (difficulty.selectedOptions[0]?.disabled) {
     difficulty.value = [...difficulty.options].find(option => !option.disabled)?.value ?? 'Normal';
@@ -385,22 +379,14 @@ async function importTracks(files, chartFile, demo = false) {
       await new Promise(resolve => setTimeout(resolve, 0));
       try {
         const buffer = await decode(file);
-        const charts = Object.fromEntries(laneModes.map(count => {
-          const variants = Object.fromEntries(chartStyles.map(style => [style,
-            Object.fromEntries(difficulties.map(level => [level, chart(buffer, level, settings, count, style)]))
-          ]));
-          for (const style of chartStyles.slice(1)) {
-            for (const level of difficulties) {
-              if (!variants[style][level].length) variants[style][level] = variants.balanced[level];
-            }
-          }
-          return [count, variants];
-        }));
-        if (chartFile) charts[imported.lanes].custom = readChart(imported, buffer);
-        if (!Object.values(charts).some(group => group.custom?.length ||
-          chartStyles.some(style => difficulties.some(level => group[style][level].length)))) {
-          throw new Error('No clear hits found.');
+        const charts = Object.fromEntries(laneModes.map(count => [
+          count, Object.fromEntries(difficulties.map(level => [level, chart(buffer, level, settings, count)]))
+        ]));
+        if (chartFile) {
+          const custom = readChart(imported, buffer);
+          charts[imported.lanes].Custom = custom;
         }
+        if (!Object.values(charts).some(group => Object.values(group).some(notes => notes.length))) throw new Error('No clear hits found.');
         const track = {file, name, charts};
         tracks.push(track);
         if (!added) {
@@ -435,8 +421,7 @@ async function playSelection() {
   const track = selected;
   const difficulty = $('difficulty').value;
   const laneCount = Number($('laneMode').value);
-  const style = $('chartStyle').value;
-  const notes = trackNotes(track, laneCount, difficulty, style);
+  const notes = track?.charts[laneCount]?.[difficulty];
   if (loading || !notes?.length) return;
   stopRun();
   loading = true;
@@ -444,7 +429,7 @@ async function playSelection() {
   try {
     await openAudio();
     const buffer = lastRun?.track === track ? lastRun.buffer : await decode(track.file);
-    startRun({track, buffer, notes, difficulty, laneCount, style});
+    startRun({track, buffer, notes, difficulty, laneCount});
   } catch (error) {
     $('libraryMessage').textContent = error.message;
   } finally {
@@ -460,17 +445,8 @@ $('laneMode').onchange = () => {
   renderTracks();
 };
 $('playTrack').onclick = playSelection;
-$('chartStyle').onchange = () => {
-  if ($('difficulty').value === 'Custom') $('difficulty').value = 'Normal';
-  renderTracks();
-};
-$('saveTrack').onclick = () => {
-  const laneCount = Number($('laneMode').value);
-  const difficulty = $('difficulty').value;
-  const style = $('chartStyle').value;
-  saveChart(selected, trackNotes(selected, laneCount, difficulty, style), difficulty, laneCount, style);
-};
-$('saveGame').onclick = () => saveChart(lastRun.track, lastRun.notes, lastRun.difficulty, lastRun.laneCount, lastRun.style);
+$('saveTrack').onclick = () => saveChart(selected, selected?.charts[$('laneMode').value]?.[$('difficulty').value], $('difficulty').value, Number($('laneMode').value));
+$('saveGame').onclick = () => saveChart(lastRun.track, lastRun.notes, lastRun.difficulty, lastRun.laneCount);
 $('openSettings').onclick = () => $('settingsDialog').showModal();
 $('touchWidth').onchange = event => {
   $('game').dataset.touchWidth = event.target.value;

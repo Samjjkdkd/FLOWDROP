@@ -3,7 +3,7 @@
 <title>FLOWDROP</title><link rel="stylesheet" href="style.css?v=timing-1">
 <header><a href="./">FLOW<span>DROP</span></a></header>
 <main><section id="setup"><p class="label">LOCAL AUDIO / AUTO CHART</p><h1>Catch the<br><em>flow.</em></h1>
-<p>Import up to 30 tracks. Choose a difficulty and a chart focus for each track.</p>
+<p>Import up to 30 tracks. FLOWDROP generates Easy, Normal and Hard charts for each.</p>
 <details class="gameplay-guide"><summary>How to play</summary>
 <p>FLOWDROP is a rhythm game with 2, 4, 6, or 8 lanes that turns your music into playable charts. Import up to 30 audio files and choose Easy, Normal, or Hard for each track. Your music is processed in your browser and stays on your device.</p>
 <p>Hit each note as it reaches the judgment line with the configured keys, or tap the pads on a touchscreen. Hold long notes until their tails reach the line, and press both lanes together for double hits. Aim for a full combo and a perfect score of 100,000.</p>
@@ -15,7 +15,7 @@
 <aside class="library" hidden aria-labelledby="libraryTitle">
   <div class="library-head"><h2 id="libraryTitle">Tracks</h2><span id="trackCount"></span></div>
   <ul id="tracks"></ul>
-  <div class="track-controls"><label>Mode <select id="laneMode"><option value="2">2 keys</option><option value="4">4 keys</option><option value="6" selected>6 keys</option><option value="8">8 keys</option></select></label><label>Chart focus <select id="chartStyle"><option value="balanced">Balanced</option><option value="drums">Drums</option><option value="vocals">Vocals</option></select></label><label>Difficulty <select id="difficulty"><option>Easy</option><option selected>Normal</option><option>Hard</option><option disabled>Custom</option></select></label> <button id="saveTrack" disabled>Save chart</button><button id="playTrack" disabled>Play</button></div>
+  <div class="track-controls"><label>Mode <select id="laneMode"><option value="2">2 keys</option><option value="4">4 keys</option><option value="6" selected>6 keys</option><option value="8">8 keys</option></select></label><label>Difficulty <select id="difficulty"><option>Easy</option><option selected>Normal</option><option>Hard</option><option disabled>Custom</option></select></label> <button id="saveTrack" disabled>Save chart</button><button id="playTrack" disabled>Play</button></div>
   <p id="libraryMessage" role="status"></p>
 </aside>
 <dialog id="calibration" aria-labelledby="calibrationTitle">
@@ -55,5 +55,5 @@
 <div class="result-grid"><div><small>SCORE</small><strong id="finalScore"></strong></div><div><small>ACCURACY</small><strong id="accuracy"></strong></div></div>
 <p id="result"></p><button id="replay">Replay</button> <button id="closeResults">Back to tracks</button>
 </dialog></section></main>
-<script src="chart.js?v=focus-1" defer></script>
-<script src="game.js?v=focus-1" defer></script></html>
+<script src="chart.js?v=drum-1" defer></script>
+<script src="game.js?v=drum-1" defer></script></html>
