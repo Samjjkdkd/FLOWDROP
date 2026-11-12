@@ -13,8 +13,11 @@ const laneOrders = {
   8: [1, 6, 2, 5, 0, 7, 3, 4]
 };
 
-function chart(buffer, difficulty, settings = {modes, ...chartDefaults}, laneCount = 6) {
-  const mode = settings.modes[difficulty];
+const analyzedTracks = new WeakMap();
+
+function analyzeTrack(buffer) {
+  const cached = analyzedTracks.get(buffer);
+  if (cached) return cached;
   const input = buffer.getChannelData(0);
   const rate = buffer.sampleRate;
   const stride = Math.max(1, Math.floor(rate / 12000));
@@ -33,11 +36,68 @@ function chart(buffer, difficulty, settings = {modes, ...chartDefaults}, laneCou
     const bands = energy.map(value => Math.log1p(value * 25));
     const attack = bands.reduce((sum, value, band) =>
       sum + Math.max(0, value - previous[band]) * [1.45, 1.15, .75][band], 0);
-    frames.push({ time: start / rate, attack, low: energy[0], body: energy[1] + energy[2], mid: energy[1] });
+    const drum = 1.6 * Math.max(0, bands[0] - previous[0]) +
+      .45 * Math.max(0, bands[2] - previous[2]);
+    frames.push({ time: start / rate, attack, drum, low: energy[0], body: energy[1] + energy[2], mid: energy[1] });
     previous = bands;
   }
 
-  const intensity = sectionIntensity(frames, hop / rate, settings.sectionWindow);
+  const step = hop / rate;
+  const attacks = frames.filter((f, i) => f.attack > .07 &&
+    f.attack >= (frames[i - 1]?.attack ?? 0) && f.attack > (frames[i + 1]?.attack ?? 0))
+    .map(f => f.attack).sort((a, b) => a - b);
+  const attackFloor = attacks[Math.floor(attacks.length * .73)] ?? 0;
+  const result = {frames, step, beat: estimateBeat(frames), attackFloor};
+  analyzedTracks.set(buffer, result);
+  return result;
+}
+
+function estimateBeat(frames) {
+  if (frames.length < 200) return null;
+  const strengths = frames.map(f => f.drum).sort((a, b) => a - b);
+  const floor = Math.max(.12, strengths[Math.floor(strengths.length * .85)]);
+  const peaks = frames.filter((f, i) => f.drum >= floor &&
+    f.drum >= (frames[i - 1]?.drum ?? 0) && f.drum > (frames[i + 1]?.drum ?? 0));
+  if (peaks.length < 10) return null;
+  const limit = peaks.map(f => f.drum).sort((a, b) => a - b)[Math.floor(peaks.length * .85)];
+  const weights = peaks.map(f => Math.min(limit, f.drum));
+  const total = weights.reduce((sum, weight) => sum + weight, 0);
+  function fit(bpm) {
+    const spacing = 30 / bpm;
+    let cosine = 0, sine = 0, pulseCosine = 0, pulseSine = 0;
+    for (let i = 0; i < peaks.length; i++) {
+      const angle = 2 * Math.PI * peaks[i].time / spacing;
+      cosine += weights[i] * Math.cos(angle);
+      sine += weights[i] * Math.sin(angle);
+      pulseCosine += weights[i] * Math.cos(angle / 2);
+      pulseSine += weights[i] * Math.sin(angle / 2);
+    }
+    const confidence = Math.hypot(cosine, sine) / total;
+    return {bpm, spacing, phase: Math.atan2(sine, cosine) * spacing / (2 * Math.PI), confidence,
+      score: confidence + .30 * Math.hypot(pulseCosine, pulseSine) / total - .07 * Math.abs(Math.log2(bpm / 120))};
+  }
+  let best = fit(120);
+  for (let bpm = 72; bpm <= 180; bpm++) {
+    const candidate = fit(bpm);
+    if (candidate.score > best.score) best = candidate;
+  }
+  const coarse = best.bpm;
+  for (let bpm = coarse - 1; bpm <= coarse + 1; bpm += .05) {
+    const candidate = fit(bpm);
+    if (candidate.score > best.score) best = candidate;
+  }
+  return best.confidence >= .26 ? best : null;
+}
+
+function gridDistance(time, beat) {
+  const relative = (time - beat.phase) / beat.spacing;
+  return Math.abs(relative - Math.round(relative)) * beat.spacing;
+}
+
+function chart(buffer, difficulty, settings = {modes, ...chartDefaults}, laneCount = 6) {
+  const mode = settings.modes[difficulty];
+  const {frames, step, beat, attackFloor} = analyzeTrack(buffer);
+  const intensity = sectionIntensity(frames, step, settings.sectionWindow);
   const notes = [];
   const recentStarts = [];
   const lanes = laneOrders[laneCount];
@@ -45,15 +105,19 @@ function chart(buffer, difficulty, settings = {modes, ...chartDefaults}, laneCou
   const freeAt = Array(laneCount).fill(0);
   let last = -Infinity, lastHold = -Infinity, holdEnd = -Infinity;
   let holdLane = -1, pairedHold = false, lastDoubleHold = -Infinity;
-  let recent = 0;
+  let recent = 0, starts = 0, chords = 0;
   for (let i = 0; i < frames.length - 1; i++) {
     const f = frames[i];
     const before = frames[i - 1]?.attack ?? 0;
     const drive = intensity[i];
     const density = 1.35 - drive * .7;
-    const threshold = Math.max(.07, recent * mode.threshold * density);
+    const relativeFloor = attackFloor * (.55 + mode.threshold * .25);
+    const threshold = Math.max(.07, relativeFloor, recent * mode.threshold * density);
     recent = recent * .94 + f.attack * .06;
-    if (f.attack < threshold || f.attack < before || f.attack <= frames[i + 1].attack ||
+    const onGrid = beat && gridDistance(f.time, beat) <= Math.min(.043, beat.spacing * .19);
+    const drumAttack = f.drum >= f.attack * .45;
+    const thresholdScale = beat && drumAttack ? (onGrid ? .79 : 1.34) : 1;
+    if (f.attack < threshold * thresholdScale || f.attack < before || f.attack <= frames[i + 1].attack ||
         f.time - last < mode.gap * density || f.time > buffer.duration - .12) continue;
     // Charge 1 for a single start and 1.5 for a two-key chord.
     const peak = mode.peak;
@@ -62,26 +126,37 @@ function chart(buffer, difficulty, settings = {modes, ...chartDefaults}, laneCou
     if (peak && load + 1 > peak) continue;
     const holding = f.time < holdEnd;
     if (holding && pairedHold) continue;
-    const lane = Array.from({ length: laneCount }, (_, j) => lanes[(notes.length + j) % laneCount])
+    const tick = beat ? Math.round((f.time - beat.phase) / beat.spacing) : starts;
+    const phrase = Math.max(0, Math.floor(tick / 32));
+    const useGrid = onGrid && drumAttack;
+    const position = useGrid ? tick + (tick % 32 >= 24 ? Math.floor(tick / 2) : 0) : starts;
+    const firstLane = ((position + phrase % 2 * half) % laneCount + laneCount) % laneCount;
+    const lane = Array.from({ length: laneCount }, (_, j) => lanes[(firstLane + j) % laneCount])
       .find(candidate => freeAt[candidate] <= f.time &&
         (!holding || (candidate < half) !== (holdLane < half)));
     if (lane === undefined) continue;
 
     let duration = 0;
-    if (f.time - lastHold >= 3) {
-      duration = sustainLength(frames, i, hop / rate, mode.hold);
+    if (!holding && f.time - lastHold >= (mode.chord ? 1.8 : 3)) {
+      const shortMinimum = beat && mode.chord && !drumAttack
+        ? Math.min(mode.hold, Math.max(.16, beat.spacing * .8))
+        : mode.hold;
+      duration = sustainLength(frames, i, step, shortMinimum, beat);
       if (f.time + duration >= buffer.duration) duration = 0;
     }
     notes.push({ time: f.time, lane, duration });
     freeAt[lane] = f.time + duration + .16;
     last = f.time;
+    starts++;
     let weight = 1;
+    const targetChordShare = .27 - drive * .09;
+    const chordDue = chords < starts * targetChordShare;
+    const chordAttack = f.attack > Math.max(.14, recent * mode.chord * (onGrid ? .60 : .82));
     // A held key plus one tap already uses both available fingers.
     pairedHold = holding && pairedHold;
-    if (mode.chord && load + 1.5 <= peak && f.time >= holdEnd + .08 &&
+    if (mode.chord && chordDue && chordAttack && load + 1.5 <= peak && f.time >= holdEnd + .08 &&
         (!duration || (f.time - lastDoubleHold >= 12 &&
-          duration >= mode.doubleHold && f.attack > threshold * 3.2)) &&
-        f.attack > Math.max(.22, recent * mode.chord * (1.35 - drive * .65))) {
+          duration >= mode.doubleHold && f.attack > threshold * 3.2))) {
       const opposite = (lane + half) % laneCount;
       if (freeAt[opposite] <= f.time) {
         notes.push({ time: f.time, lane: opposite, duration });
@@ -89,6 +164,7 @@ function chart(buffer, difficulty, settings = {modes, ...chartDefaults}, laneCou
         pairedHold = duration > 0;
         if (pairedHold) lastDoubleHold = f.time;
         weight = 1.5;
+        chords++;
       }
     }
     if (duration) {
@@ -129,7 +205,7 @@ function sectionIntensity(frames, step, windowSeconds) {
   });
 }
 
-function sustainLength(frames, start, step, minimum) {
+function sustainLength(frames, start, step, minimum, beat = null) {
   // Compare the sound after the attack with the few frames before it.
   const attack = frames.slice(start, start + 5);
   if (attack.length < 5) return 0;
@@ -152,7 +228,9 @@ function sustainLength(frames, start, step, minimum) {
     const peak = frame.attack >= frames[i - 1].attack &&
       frame.attack > (frames[i + 1]?.attack ?? 0);
     const newAttack = frame.attack >= Math.max(.65, frames[start].attack * .28, recentAttack * 3);
-    if (elapsed >= minimum && peak && newAttack) return elapsed;
+    const beatBoundary = beat && gridDistance(frame.time, beat) <= step;
+    const rhythmicAttack = beatBoundary && frame.drum >= .30 && frame.attack >= recentAttack * 2;
+    if (elapsed >= minimum && peak && (newAttack || rhythmicAttack)) return elapsed;
     recentAttack = recentAttack * .9 + frame.attack * .1;
     if (frame.attack > Math.max(1.4, frames[start].attack * .9) && frame.mid < mid * .55) break;
     if (frame.body >= bodyFloor && frame.mid >= midFloor) {
@@ -162,7 +240,14 @@ function sustainLength(frames, start, step, minimum) {
     }
   }
   const length = (end + 1 - start) * step;
-  return length >= minimum ? length : 0;
+  if (length < minimum) return 0;
+  if (!beat) return length;
+  // A nearby subdivision can finish the hold slightly early, without extending past decay.
+  const tailTime = frames[start].time + length;
+  const subdivision = beat.spacing / 2;
+  const gridTail = beat.phase + Math.floor((tailTime - beat.phase) / subdivision) * subdivision;
+  const aligned = gridTail - frames[start].time;
+  return aligned >= minimum && length - aligned <= .035 ? aligned : length;
 }
 
 function practice(context) {
