@@ -149,7 +149,7 @@ function chart(buffer, difficulty, settings = {modes, ...chartDefaults}, laneCou
     last = f.time;
     starts++;
     let weight = 1;
-    const targetChordShare = .27 - drive * .09;
+    const targetChordShare = .21 - drive * .07;
     const chordDue = chords < starts * targetChordShare;
     const chordAttack = f.attack > Math.max(.14, recent * mode.chord * (onGrid ? .60 : .82));
     // A held key plus one tap already uses both available fingers.
